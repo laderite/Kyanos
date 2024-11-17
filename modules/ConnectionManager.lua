@@ -1,23 +1,23 @@
-local ConnectionManager = {}
-ConnectionManager.__index = ConnectionManager
+local CleanupManager = {}
+CleanupManager.__index = CleanupManager
 
-function ConnectionManager.new()
+function CleanupManager.new()
     local self = setmetatable({
         _connections = {},
         _objects = {},
         _tasks = {}
-    }, ConnectionManager)
+    }, CleanupManager)
     return self
 end
 
 -- Add a connection to be managed
-function ConnectionManager:connect(connection)
+function CleanupManager:connect(connection)
     table.insert(self._connections, connection)
     return connection
 end
 
 -- Add an object with a cleanup method (like Destroy or Disconnect)
-function ConnectionManager:add(object, cleanupMethod)
+function CleanupManager:add(object, cleanupMethod)
     table.insert(self._objects, {
         instance = object,
         cleanup = cleanupMethod or "Destroy"
@@ -26,7 +26,7 @@ function ConnectionManager:add(object, cleanupMethod)
 end
 
 -- Add a task/function to be executed during cleanup
-function ConnectionManager:addTask(task)
+function CleanupManager:addTask(task)
     if type(task) == "function" then
         table.insert(self._tasks, task)
     end
@@ -34,7 +34,7 @@ function ConnectionManager:addTask(task)
 end
 
 -- Cleanup everything
-function ConnectionManager:cleanup()
+function CleanupManager:cleanup()
     -- Disconnect all connections
     for _, connection in ipairs(self._connections) do
         if typeof(connection) == "RBXScriptConnection" then
@@ -63,4 +63,4 @@ function ConnectionManager:cleanup()
     table.clear(self._tasks)
 end
 
-return ConnectionManager
+return CleanupManager
