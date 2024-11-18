@@ -1,17 +1,5 @@
 local WebhookService = {
-    ErrorPrinting = true,
-    ThumbnailSizes = {
-        ["48x48"] = true,
-        ["50x50"] = true,
-        ["60x60"] = true,
-        ["75x75"] = true,
-        ["100x100"] = true,
-        ["150x150"] = true,
-        ["180x180"] = true,
-        ["353x352"] = true,
-        ["420x420"] = true,
-        ["720x720"] = true
-    }
+    ErrorPrinting = false
 }
 
 -- Services
