@@ -104,7 +104,6 @@ function WebhookQueue:process()
     local data = table.remove(self.queue, 1)
     processWebhook(data.url, HttpService:JSONEncode(data.payload))
     
-    task.wait(2) -- Rate limiting protection
     self:process()
 end
 
