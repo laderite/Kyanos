@@ -25,6 +25,7 @@ local Observer = Fusion.Observer
 
 local Utils = script.utils
 local unwrap = require(Utils.unwrap)
+local insertItem = require(Utils.insertitem)
 
 local Library = {
 	Version = "1.0.0",
@@ -32,10 +33,12 @@ local Library = {
 
 	Options = {},
 	Connections = {},
+	NotificationHolder = nil,
 
 	Window = nil,
 	Unloaded = false,
 
+	MinimizeKey = Enum.KeyCode.LeftControl,
 	MinimizeKeybind = nil,
 
 	GUI = nil,
@@ -115,6 +118,9 @@ function Library:CreateWindow(Config)
 		end
 	end
 
+	local notificationHolder = require(Components.notification.notificationHolder)
+	States.add("Objects", notificationHolder, "NotificationHolder")
+
 	Library.MinimizeKey = Config.MinimizeKey or Enum.KeyCode.LeftControl
 	Library.Theme = Config.Theme or "Dark"
 
@@ -126,6 +132,16 @@ end
 
 function Library:SetTheme(theme)
 	States.Theme:set(theme)
+end
+
+function Library:GetTheme()
+	return States.Theme:get()
+end
+
+local Notification = require(Components.notification.notification)
+function Library:Notify(config)
+	local notif = Notification:New(config)
+	insertItem(States.Notifications, notif.Root)
 end
 
 function Library:Destroy()
@@ -146,10 +162,6 @@ local onDestroyObserver = Observer(States.toDestroy)
 onDestroyObserver:onChange(function()
 	Library:Destroy()
 end)
-
-function Library:Notify(config)
-	print(`{config.Title} - {config.Content}: {config.SubContent}`)
-end
 
 pcall(function()
 	getgenv().Kyanos = Library
@@ -3730,7 +3742,288 @@ end
 
 return Element
 end)() end,
-    [17] = function()local wax,script,require=ImportGlobals(17)local ImportGlobals return (function(...)-- < Utils >
+    [16] = function()local wax,script,require=ImportGlobals(16)local ImportGlobals return (function(...)local UserInputService = game:GetService("UserInputService")
+
+-- < Utils >
+local Utils = script.Parent.Parent.Parent.utils
+local animate = require(Utils.animate)
+local colorUtils = require(Utils.color3)
+local unwrap = require(Utils.unwrap)
+local insertItem = require(Utils.insertitem)
+local safeCallback = require(Utils.safecallback)
+
+-- < Packages >
+local Packages = script.Parent.Parent.Parent.packages
+local Fusion = require(Packages.fusion)
+local Snapdragon = require(Packages.snapdragon)
+local States = require(Packages.states)
+
+-- < Components >
+--local Scroll = require(script.Parent.scroll)
+
+-- < Variables >
+local Children = Fusion.Children
+local Computed = Fusion.Computed
+local ForPairs = Fusion.ForPairs
+local ForValues = Fusion.ForValues
+local Observer = Fusion.Observer
+local OnChange = Fusion.OnChange
+local OnEvent = Fusion.OnEvent
+local Value = Fusion.Value
+local Tween = Fusion.Tween
+local Ref = Fusion.Ref
+local New = Fusion.New
+
+-- < Theme >
+local Theme = require(script.Parent.Parent.Parent.storage.theme)
+
+local Module = {}
+function Module:New(Config)
+	local Notification = {
+		Duration = Config.Duration or 5,
+		Destroying = Value(false),
+	}
+
+	local isHovered = Value(false)
+	local isVisible = Value(false)
+
+	local position = Computed(function()
+		if not isVisible:get() then
+			return UDim2.fromOffset(380, 0)
+		end
+		return UDim2.fromOffset(350, 0)
+	end)
+
+	local transparency = Computed(function()
+		return if not isVisible:get() then 1 else 0
+	end)
+
+	local backgroundTransparency = Computed(function()
+		return if not isVisible:get() then 1 elseif isHovered:get() then 0.1 else 0
+	end)
+
+	-- Create springs for smooth animations
+	local springPosition = animate(function()
+		return position:get()
+	end, 25, 1)
+	local springTransparency = animate(function()
+		return transparency:get()
+	end, 15, 1)
+	local springBackgroundTransparency = animate(function()
+		return backgroundTransparency:get()
+	end, 15, 1)
+
+	Notification.Root = nil
+	local function destroyNotification()
+		if Notification.Destroying:get() then
+			return
+		end
+		Notification.Destroying:set(true)
+		isVisible:set(false)
+
+		task.delay(0.5, function()
+			Notification.Root:Destroy()
+		end)
+	end
+
+	Notification.Root = New("Frame")({
+		Name = "Holder",
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundColor3 = Theme.secondary_background,
+		BackgroundTransparency = 1,
+		BorderColor3 = Color3.fromRGB(0, 0, 0),
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		Size = springPosition,
+		Position = springPosition,
+
+		[OnEvent("MouseEnter")] = function()
+			isHovered:set(true)
+		end,
+
+		[OnEvent("MouseLeave")] = function()
+			isHovered:set(false)
+		end,
+
+		[Children] = {
+			New("Frame")({
+				Name = "Notification",
+				BackgroundColor3 = Theme.secondary_background,
+				BackgroundTransparency = springBackgroundTransparency,
+				BorderColor3 = Color3.fromRGB(0, 0, 0),
+				BorderSizePixel = 0,
+				ClipsDescendants = true,
+				Size = UDim2.fromScale(1, 1),
+
+				[Children] = {
+					New("UICorner")({
+						Name = "UICorner",
+						CornerRadius = UDim.new(0, 10),
+					}),
+
+					New("ImageButton")({
+						Name = "ImageButton",
+						Image = "rbxassetid://83025375285006",
+						ImageColor3 = Theme.tertiary_text,
+						AnchorPoint = Vector2.new(1, 0),
+						BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+						BackgroundTransparency = 1,
+						BorderColor3 = Color3.fromRGB(0, 0, 0),
+						BorderSizePixel = 0,
+						Position = UDim2.new(1, -15, 0, 15),
+						Size = UDim2.fromOffset(16, 16),
+						ImageTransparency = springTransparency,
+
+						[OnEvent("Activated")] = destroyNotification,
+					}),
+
+					New("Frame")({
+						Name = "Main",
+						BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+						BackgroundTransparency = 1,
+						BorderColor3 = Color3.fromRGB(0, 0, 0),
+						BorderSizePixel = 0,
+						Size = UDim2.fromScale(1, 1),
+
+						[Children] = {
+							New("Frame")({
+								Name = "TextHolder",
+								AutomaticSize = Enum.AutomaticSize.Y,
+								BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+								BackgroundTransparency = 1,
+								BorderColor3 = Color3.fromRGB(0, 0, 0),
+								BorderSizePixel = 0,
+								Size = UDim2.new(1, -50, 0, 0),
+
+								[Children] = {
+									New("TextLabel")({
+										Name = "TextLabel",
+										FontFace = Font.new(
+											"rbxassetid://12187365364",
+											Enum.FontWeight.SemiBold,
+											Enum.FontStyle.Normal
+										),
+										Text = Config.Title,
+										TextColor3 = Theme.text,
+										TextSize = 17,
+										TextXAlignment = Enum.TextXAlignment.Left,
+										AutomaticSize = Enum.AutomaticSize.Y,
+										BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+										BackgroundTransparency = 1,
+										BorderColor3 = Color3.fromRGB(0, 0, 0),
+										BorderSizePixel = 0,
+										TextTransparency = springTransparency,
+									}),
+
+									New("TextLabel")({
+										Name = "TextLabel",
+										FontFace = Font.new("rbxassetid://12187365364"),
+										RichText = true,
+										Text = Config.Description,
+										TextColor3 = Theme.secondary_text,
+										TextSize = 15,
+										TextWrapped = true,
+										TextXAlignment = Enum.TextXAlignment.Left,
+										TextYAlignment = Enum.TextYAlignment.Top,
+										AutomaticSize = Enum.AutomaticSize.Y,
+										BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+										BackgroundTransparency = 1,
+										BorderColor3 = Color3.fromRGB(0, 0, 0),
+										BorderSizePixel = 0,
+										Position = UDim2.fromOffset(0, 18),
+										Size = UDim2.fromScale(1, 0),
+										TextTransparency = springTransparency,
+									}),
+								},
+							}),
+
+							New("UIListLayout")({
+								Name = "UIListLayout",
+								Padding = UDim.new(0, 7),
+								FillDirection = Enum.FillDirection.Horizontal,
+								SortOrder = Enum.SortOrder.LayoutOrder,
+							}),
+
+							New("UIPadding")({
+								Name = "UIPadding",
+								PaddingBottom = UDim.new(0, 20),
+								PaddingLeft = UDim.new(0, 15),
+								PaddingTop = UDim.new(0, 20),
+							}),
+						},
+					}),
+				},
+			}),
+
+			New("UIStroke")({
+				Name = "UIStroke",
+				ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+				Color = Theme.stroke,
+				Transparency = springTransparency,
+			}),
+
+			New("UICorner")({
+				Name = "UICorner",
+				CornerRadius = UDim.new(0, 10),
+			}),
+		},
+	})
+
+	task.defer(function()
+		isVisible:set(true)
+	end)
+
+	task.delay(Notification.Duration, destroyNotification)
+	return Notification
+end
+
+return Module
+
+end)() end,
+    [17] = function()local wax,script,require=ImportGlobals(17)local ImportGlobals return (function(...)-- < Packages >
+local Packages = script.Parent.Parent.Parent.packages
+local Fusion = require(Packages.fusion)
+local States = require(Packages.states)
+
+-- < Variables >
+local New = Fusion.New
+local Children = Fusion.Children
+local ForPairs = Fusion.ForPairs
+
+return New("Frame")({
+	Name = "NotificationHolder",
+	AnchorPoint = Vector2.new(1, 1),
+	BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+	BackgroundTransparency = 1,
+	BorderColor3 = Color3.fromRGB(0, 0, 0),
+	BorderSizePixel = 0,
+	Position = UDim2.fromScale(1, 1),
+	Size = UDim2.new(0, 360, 1, 0),
+	ZIndex = 100,
+
+	[Children] = {
+		New("UIListLayout")({
+			Name = "UIListLayout",
+			Padding = UDim.new(0, 4),
+			HorizontalAlignment = Enum.HorizontalAlignment.Right,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			VerticalAlignment = Enum.VerticalAlignment.Bottom,
+		}),
+
+		New("UIPadding")({
+			Name = "UIPadding",
+			PaddingBottom = UDim.new(0, 10),
+			PaddingRight = UDim.new(0, 10),
+		}),
+
+		ForPairs(States.Notifications, function(index, value)
+			return index, value
+		end, Fusion.cleanup),
+	},
+})
+
+end)() end,
+    [19] = function()local wax,script,require=ImportGlobals(19)local ImportGlobals return (function(...)-- < Utils >
 local Utils = script.Parent.Parent.Parent.utils
 local animate = require(Utils.animate)
 local colorUtils = require(Utils.color3)
@@ -3898,7 +4191,7 @@ return function(props: CategoryProps)
 end
 
 end)() end,
-    [18] = function()local wax,script,require=ImportGlobals(18)local ImportGlobals return (function(...)local UserInputService = game:GetService("UserInputService")
+    [20] = function()local wax,script,require=ImportGlobals(20)local ImportGlobals return (function(...)local UserInputService = game:GetService("UserInputService")
 local Camera = game:GetService("Workspace").CurrentCamera
 
 -- < Utils >
@@ -4294,7 +4587,7 @@ end
 
 return Module
 end)() end,
-    [19] = function()local wax,script,require=ImportGlobals(19)local ImportGlobals return (function(...)-- < Utils >
+    [21] = function()local wax,script,require=ImportGlobals(21)local ImportGlobals return (function(...)-- < Utils >
 local Utils = script.Parent.Parent.Parent.utils
 local animate = require(Utils.animate)
 local colorUtils = require(Utils.color3)
@@ -4425,7 +4718,7 @@ return function(props: SectionProps)
 	return Section
 end
 end)() end,
-    [20] = function()local wax,script,require=ImportGlobals(20)local ImportGlobals return (function(...)-- < Utils >
+    [22] = function()local wax,script,require=ImportGlobals(22)local ImportGlobals return (function(...)-- < Utils >
 local Utils = script.Parent.Parent.Parent.utils
 local animate = require(Utils.animate)
 local colorUtils = require(Utils.color3)
@@ -4608,7 +4901,7 @@ return function(props: TabProps)
 end
 
 end)() end,
-    [21] = function()local wax,script,require=ImportGlobals(21)local ImportGlobals return (function(...)-- < Utils >
+    [23] = function()local wax,script,require=ImportGlobals(23)local ImportGlobals return (function(...)-- < Utils >
 local Utils = script.Parent.Parent.Parent.utils
 local animate = require(Utils.animate)
 local colorUtils = require(Utils.color3)
@@ -4646,6 +4939,7 @@ type WindowProps = {
 }
 
 return function(props: WindowProps)
+	local Library = unwrap(States.Library)
 	local Window = {
 		Categorys = 1,
 	}
@@ -4684,6 +4978,10 @@ return function(props: WindowProps)
 		Interactable = true,
 
 		[Children] = {
+			New("UIAspectRatioConstraint")({
+				Name = "UIAspectRatioConstraint",
+				AspectRatio = 1.6,
+			}),
 			New("UICorner")({
 				Name = "UICorner",
 				CornerRadius = UDim.new(0, 4),
@@ -5056,48 +5354,24 @@ return function(props: WindowProps)
 			local TargetSize = Vector3.new(StartSize.X.Offset, StartSize.Y.Offset, 0)
 				+ Vector3.new(1, 1, 0) * (input.Position - ResizePos:get())
 			local TargetSizeClamped =
-				Vector2.new(math.clamp(TargetSize.X, 470, 2048), math.clamp(TargetSize.Y, 380, 2048))
+				Vector2.new(math.clamp(TargetSize.X, 600, 2048), math.clamp(TargetSize.Y, 400, 2048))
 
 			Size:set({ X = TargetSizeClamped.X, Y = TargetSizeClamped.Y })
 			ResizePos:set(input.Position)
 		end
 	end)
 
-	UserInputService.InputEnded:Connect(function(input)
-		if
-			input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch
-		then
-			if Resizing:get() then
-				Resizing:set(false)
-			end
-		end
-	end)
-
-	UserInputService.InputEnded:Connect(function(input)
-		if
-			type(unwrap(States.MinimizeKeybind)) == "table"
-			and unwrap(States.MinimizeKeybind).Type == "Keybind"
-			and not UserInputService:GetFocusedTextBox()
-		then
-			if input.KeyCode.Name == unwrap(States.MinimizeKeybind).Value then
-				Window:Minimize()
-			end
-		elseif input.KeyCode == unwrap(States.MinimizeKey) and not UserInputService:GetFocusedTextBox() then
-			Window:Minimize()
-		end
-	end)
-
+	local MinimizeNotif = false
 	function Window:Minimize()
 		openedState:set(not openedState:get())
 		if not MinimizeNotif then
 			MinimizeNotif = true
-			local Key = unwrap(States.MinimizeKey)
-			--[[self.Library:Notify({
+			local Key = Library.MinimizeKey
+			Library:Notify({
 				Title = "Interface",
-				Content = "Press " .. Key .. " to toggle the interface.",
-				Duration = 6
-			})]]
+				Description = "Press " .. Key .. " to toggle the interface.",
+				Duration = 6,
+			})
 		end
 	end
 
@@ -5142,11 +5416,39 @@ return function(props: WindowProps)
 		end
 	end)]]
 
+	UserInputService.InputEnded:Connect(function(input)
+		if
+			input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch
+		then
+			if Resizing:get() then
+				Resizing:set(false)
+			end
+		end
+	end)
+
+	table.insert(
+		unwrap(States.Library).Connections,
+		UserInputService.InputEnded:Connect(function(input)
+			if
+				type(Library.MinimizeKeybind) == "table"
+				and Library.MinimizeKeybind.Type == "Keybind"
+				and not UserInputService:GetFocusedTextBox()
+			then
+				if input.KeyCode.Name == Library.MinimizeKeybind.Value then
+					Window:Minimize()
+				end
+			elseif input.KeyCode == Library.MinimizeKey and not UserInputService:GetFocusedTextBox() then
+				Window:Minimize()
+			end
+		end)
+	)
+
 	return Window
 end
 
 end)() end,
-    [22] = function()local wax,script,require=ImportGlobals(22)local ImportGlobals return (function(...)--[[
+    [24] = function()local wax,script,require=ImportGlobals(24)local ImportGlobals return (function(...)--[[
 	File: app.story.lua
 	Returns the app component for use with hoarcekat
 ]]
@@ -6034,7 +6336,7 @@ local story = {
 		ElementsSection:AddKeybind("ShowcaseKeybind", {
 			Title = "Keybind Element",
 			Description = "Demonstrates the keybind UI element",
-			Default = Enum.KeyCode.E,
+			Default = "E",
 		})
 
 		ElementsSection:AddButton({
@@ -6043,6 +6345,10 @@ local story = {
 			Description = "Perform primary action",
 			Callback = function()
 				print("Primary button clicked")
+				Library:Notify({
+					Title = "Primary Notification",
+					Description = "This is a primary notification.",
+				})
 			end,
 		})
 
@@ -6114,581 +6420,6 @@ local story = {
 }
 
 return story
-
-end)() end,
-    [24] = function()local wax,script,require=ImportGlobals(24)local ImportGlobals return (function(...)--!strict
-local damerau = {}
-
---[[
-    [Wikipedia: Damerau Levenshtein Distance](https://en.wikipedia.org/wiki/Damerau%E2%80%93Levenshtein_distance)
-
-    @param s the string to measure from
-    @param t the string to measure to
-    @return the amount of changes are needed to change `s` to `t`
-]]
-function damerau.raw(s: string, t: string): number
-	-- switch s and t if s is longer than t
-	if #s > #t then
-		t, s = s, t
-	end
-
-	local m, n = #s, #t
-
-	local vn = table.create(n + 1, 0)
-
-	-- initialize vn so that each value is its index (-1 because lua)
-	-- so that it is the edit distance from an empty s to t
-	for i = 1, n + 1 do
-		vn[i] = i - 1
-	end
-
-	local v0, v1 = table.clone(vn), table.clone(vn)
-
-	for i = 1, m do
-		v1[1] = i - 1
-
-		for j = 1, n do
-			local cost = if s:sub(i, i) == t:sub(j, j) then 0 else 1
-
-			-- check whether this and previous character can be switched
-			if i > 1 and j > 1 and s:sub(i, i) == t:sub(j - 1, j - 1) and s:sub(i - 1, i - 1) == t:sub(j, j) then
-				local noChangeCost = v1[j + 1]
-				local transpositionCost = vn[j - 1] + 1
-
-				v1[j + 1] = math.min(noChangeCost, transpositionCost)
-			else
-				local deletionCost = v0[j + 1] + 1
-				local insertionCost = v1[j] + 1
-				local substitutionCost = v0[j] + cost
-
-				v1[j + 1] = math.min(deletionCost, insertionCost, substitutionCost)
-			end
-		end
-
-		-- shift all arrays up by one
-		vn, v0, v1 = v0, v1, vn
-	end
-
-	return v0[n + 1]
-end
-
---[[
-    A weighted version of damerau levenshtein so that the returned value is 0-1.
-
-    @see damerau.raw
-
-    @param s the string to measure from
-    @param t the string to measure to
-    @return percentage of `s` that needs to change to convert it to `t` (0-1)
-]]
-function damerau.weighted(s: string, t: string): number
-	return damerau.raw(s, t) / (#s + #t)
-end
-
-return damerau
-
-end)() end,
-    [25] = function()local wax,script,require=ImportGlobals(25)local ImportGlobals return (function(...)-- https://raw.githubusercontent.com/richie0866/orca/320f43f28373864bb7cd1b9634c337ca77fcee03/src/jobs/helpers/freecam/init.lua
-------------------------------------------------------------------------
--- Freecam
--- Cinematic free camera for spectating and video production.
-------------------------------------------------------------------------
-
-local pi = math.pi
-local abs = math.abs
-local clamp = math.clamp
-local exp = math.exp
-local rad = math.rad
-local sign = math.sign
-local sqrt = math.sqrt
-local tan = math.tan
-
-local ContextActionService = game:GetService("ContextActionService")
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local StarterGui = game:GetService("StarterGui")
-local UserInputService = game:GetService("UserInputService")
-local Workspace = game:GetService("Workspace")
-
-local LocalPlayer = Players.LocalPlayer
-if not LocalPlayer then
-	Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
-	LocalPlayer = Players.LocalPlayer
-end
-
-local Camera = Workspace.CurrentCamera
-Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-	local newCamera = Workspace.CurrentCamera
-	if newCamera then
-		Camera = newCamera
-	end
-end)
-
-------------------------------------------------------------------------
-
-local TOGGLE_INPUT_PRIORITY = Enum.ContextActionPriority.Low.Value
-local INPUT_PRIORITY = Enum.ContextActionPriority.High.Value
-local FREECAM_MACRO_KB = { Enum.KeyCode.LeftShift, Enum.KeyCode.P }
-
-local FREECAM_RENDER_ID = game:GetService("HttpService"):GenerateGUID(false)
-
-local NAV_GAIN = Vector3.new(1, 1, 1) * 64
-local PAN_GAIN = Vector2.new(0.75, 1) * 8
-local FOV_GAIN = 300
-
-local PITCH_LIMIT = rad(90)
-
-local VEL_STIFFNESS = 2.0
-local PAN_STIFFNESS = 3.0
-local FOV_STIFFNESS = 4.0
-
-------------------------------------------------------------------------
-
-local Spring = {}
-do
-	Spring.__index = Spring
-
-	function Spring.new(freq, pos)
-		local self = setmetatable({}, Spring)
-		self.f = freq
-		self.p = pos
-		self.v = pos * 0
-		return self
-	end
-
-	function Spring:Update(dt, goal)
-		local f = self.f * 2 * pi
-		local p0 = self.p
-		local v0 = self.v
-
-		local offset = goal - p0
-		local decay = exp(-f * dt)
-
-		local p1 = goal + (v0 * dt - offset * (f * dt + 1)) * decay
-		local v1 = (f * dt * (offset * f - v0) + v0) * decay
-
-		self.p = p1
-		self.v = v1
-
-		return p1
-	end
-
-	function Spring:Reset(pos)
-		self.p = pos
-		self.v = pos * 0
-	end
-end
-
-------------------------------------------------------------------------
-
-local cameraPos = Vector3.new()
-local cameraRot = Vector2.new()
-local cameraFov = 0
-
-local velSpring = Spring.new(VEL_STIFFNESS, Vector3.new())
-local panSpring = Spring.new(PAN_STIFFNESS, Vector2.new())
-local fovSpring = Spring.new(FOV_STIFFNESS, 0)
-
-------------------------------------------------------------------------
-
-local Input = {}
-do
-	local thumbstickCurve
-	do
-		local K_CURVATURE = 2.0
-		local K_DEADZONE = 0.15
-
-		local function fCurve(x)
-			return (exp(K_CURVATURE * x) - 1) / (exp(K_CURVATURE) - 1)
-		end
-
-		local function fDeadzone(x)
-			return fCurve((x - K_DEADZONE) / (1 - K_DEADZONE))
-		end
-
-		function thumbstickCurve(x)
-			return sign(x) * clamp(fDeadzone(abs(x)), 0, 1)
-		end
-	end
-
-	local gamepad = {
-		ButtonX = 0,
-		ButtonY = 0,
-		DPadDown = 0,
-		DPadUp = 0,
-		ButtonL2 = 0,
-		ButtonR2 = 0,
-		Thumbstick1 = Vector2.new(),
-		Thumbstick2 = Vector2.new(),
-	}
-
-	local keyboard = {
-		W = 0,
-		A = 0,
-		S = 0,
-		D = 0,
-		E = 0,
-		Q = 0,
-		U = 0,
-		H = 0,
-		J = 0,
-		K = 0,
-		I = 0,
-		Y = 0,
-		Up = 0,
-		Down = 0,
-		LeftShift = 0,
-		RightShift = 0,
-	}
-
-	local mouse = {
-		Delta = Vector2.new(),
-		MouseWheel = 0,
-	}
-
-	local NAV_GAMEPAD_SPEED = Vector3.new(1, 1, 1)
-	local NAV_KEYBOARD_SPEED = Vector3.new(1, 1, 1)
-	local PAN_MOUSE_SPEED = Vector2.new(1, 1) * (pi / 64)
-	local PAN_GAMEPAD_SPEED = Vector2.new(1, 1) * (pi / 8)
-	local FOV_WHEEL_SPEED = 1.0
-	local FOV_GAMEPAD_SPEED = 0.25
-	local NAV_ADJ_SPEED = 0.75
-	local NAV_SHIFT_MUL = 0.25
-
-	local navSpeed = 1
-
-	function Input.Vel(dt)
-		navSpeed = clamp(navSpeed + dt * (keyboard.Up - keyboard.Down) * NAV_ADJ_SPEED, 0.01, 4)
-
-		local kGamepad = Vector3.new(
-			thumbstickCurve(gamepad.Thumbstick1.X),
-			thumbstickCurve(gamepad.ButtonR2) - thumbstickCurve(gamepad.ButtonL2),
-			thumbstickCurve(-gamepad.Thumbstick1.Y)
-		) * NAV_GAMEPAD_SPEED
-
-		local kKeyboard = Vector3.new(
-			keyboard.D - keyboard.A + keyboard.K - keyboard.H,
-			keyboard.E - keyboard.Q + keyboard.I - keyboard.Y,
-			keyboard.S - keyboard.W + keyboard.J - keyboard.U
-		) * NAV_KEYBOARD_SPEED
-
-		local shift = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
-			or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
-
-		return (kGamepad + kKeyboard) * (navSpeed * (shift and NAV_SHIFT_MUL or 1))
-	end
-
-	function Input.Pan(dt)
-		local kGamepad = Vector2.new(thumbstickCurve(gamepad.Thumbstick2.Y), thumbstickCurve(-gamepad.Thumbstick2.X))
-			* PAN_GAMEPAD_SPEED
-		local kMouse = mouse.Delta * PAN_MOUSE_SPEED / (dt * 60)
-		mouse.Delta = Vector2.new()
-		return kGamepad + kMouse
-	end
-
-	function Input.Fov(dt)
-		local kGamepad = (gamepad.ButtonX - gamepad.ButtonY) * FOV_GAMEPAD_SPEED
-		local kMouse = mouse.MouseWheel * FOV_WHEEL_SPEED
-		mouse.MouseWheel = 0
-		return kGamepad + kMouse
-	end
-
-	do
-		local function Keypress(action, state, input)
-			keyboard[input.KeyCode.Name] = state == Enum.UserInputState.Begin and 1 or 0
-			return Enum.ContextActionResult.Sink
-		end
-
-		local function GpButton(action, state, input)
-			gamepad[input.KeyCode.Name] = state == Enum.UserInputState.Begin and 1 or 0
-			return Enum.ContextActionResult.Sink
-		end
-
-		local function MousePan(action, state, input)
-			local delta = input.Delta
-			mouse.Delta = Vector2.new(-delta.y, -delta.x)
-			return Enum.ContextActionResult.Sink
-		end
-
-		local function Thumb(action, state, input)
-			gamepad[input.KeyCode.Name] = input.Position
-			return Enum.ContextActionResult.Sink
-		end
-
-		local function Trigger(action, state, input)
-			gamepad[input.KeyCode.Name] = input.Position.z
-			return Enum.ContextActionResult.Sink
-		end
-
-		local function MouseWheel(action, state, input)
-			mouse[input.UserInputType.Name] = -input.Position.z
-			return Enum.ContextActionResult.Sink
-		end
-
-		local function Zero(t)
-			for k, v in pairs(t) do
-				t[k] = v * 0
-			end
-		end
-
-		function Input.StartCapture()
-			ContextActionService:BindActionAtPriority(
-				FREECAM_RENDER_ID .. "FreecamKeyboard",
-				Keypress,
-				false,
-				INPUT_PRIORITY,
-				Enum.KeyCode.W, -- Enum.KeyCode.U,
-				Enum.KeyCode.A, -- Enum.KeyCode.H,
-				Enum.KeyCode.S, -- Enum.KeyCode.J,
-				Enum.KeyCode.D, -- Enum.KeyCode.K,
-				Enum.KeyCode.E, -- Enum.KeyCode.I,
-				Enum.KeyCode.Q, -- Enum.KeyCode.Y,
-				Enum.KeyCode.Up,
-				Enum.KeyCode.Down
-			)
-			ContextActionService:BindActionAtPriority(
-				FREECAM_RENDER_ID .. "FreecamMousePan",
-				MousePan,
-				false,
-				INPUT_PRIORITY,
-				Enum.UserInputType.MouseMovement
-			)
-			ContextActionService:BindActionAtPriority(
-				FREECAM_RENDER_ID .. "FreecamMouseWheel",
-				MouseWheel,
-				false,
-				INPUT_PRIORITY,
-				Enum.UserInputType.MouseWheel
-			)
-			ContextActionService:BindActionAtPriority(
-				FREECAM_RENDER_ID .. "FreecamGamepadButton",
-				GpButton,
-				false,
-				INPUT_PRIORITY,
-				Enum.KeyCode.ButtonX,
-				Enum.KeyCode.ButtonY
-			)
-			ContextActionService:BindActionAtPriority(
-				FREECAM_RENDER_ID .. "FreecamGamepadTrigger",
-				Trigger,
-				false,
-				INPUT_PRIORITY,
-				Enum.KeyCode.ButtonR2,
-				Enum.KeyCode.ButtonL2
-			)
-			ContextActionService:BindActionAtPriority(
-				FREECAM_RENDER_ID .. "FreecamGamepadThumbstick",
-				Thumb,
-				false,
-				INPUT_PRIORITY,
-				Enum.KeyCode.Thumbstick1,
-				Enum.KeyCode.Thumbstick2
-			)
-		end
-
-		function Input.StopCapture()
-			navSpeed = 1
-			Zero(gamepad)
-			Zero(keyboard)
-			Zero(mouse)
-			ContextActionService:UnbindAction(FREECAM_RENDER_ID .. "FreecamKeyboard")
-			ContextActionService:UnbindAction(FREECAM_RENDER_ID .. "FreecamMousePan")
-			ContextActionService:UnbindAction(FREECAM_RENDER_ID .. "FreecamMouseWheel")
-			ContextActionService:UnbindAction(FREECAM_RENDER_ID .. "FreecamGamepadButton")
-			ContextActionService:UnbindAction(FREECAM_RENDER_ID .. "FreecamGamepadTrigger")
-			ContextActionService:UnbindAction(FREECAM_RENDER_ID .. "FreecamGamepadThumbstick")
-		end
-	end
-end
-
-local function GetFocusDistance(cameraFrame)
-	local znear = 0.1
-	local viewport = Camera.ViewportSize
-	local projy = 2 * tan(cameraFov / 2)
-	local projx = viewport.x / viewport.y * projy
-	local fx = cameraFrame.rightVector
-	local fy = cameraFrame.upVector
-	local fz = cameraFrame.lookVector
-
-	local minVect = Vector3.new()
-	local minDist = 512
-
-	for x = 0, 1, 0.5 do
-		for y = 0, 1, 0.5 do
-			local cx = (x - 0.5) * projx
-			local cy = (y - 0.5) * projy
-			local offset = fx * cx - fy * cy + fz
-			local origin = cameraFrame.p + offset * znear
-			local _, hit = Workspace:FindPartOnRay(Ray.new(origin, offset.unit * minDist))
-			local dist = (hit - origin).magnitude
-			if minDist > dist then
-				minDist = dist
-				minVect = offset.unit
-			end
-		end
-	end
-
-	return fz:Dot(minVect) * minDist
-end
-
-------------------------------------------------------------------------
-
-local function StepFreecam(dt)
-	local vel = velSpring:Update(dt, Input.Vel(dt))
-	local pan = panSpring:Update(dt, Input.Pan(dt))
-	local fov = fovSpring:Update(dt, Input.Fov(dt))
-
-	local zoomFactor = sqrt(tan(rad(70 / 2)) / tan(rad(cameraFov / 2)))
-
-	cameraFov = clamp(cameraFov + fov * FOV_GAIN * (dt / zoomFactor), 1, 120)
-	cameraRot = cameraRot + pan * PAN_GAIN * (dt / zoomFactor)
-	cameraRot = Vector2.new(clamp(cameraRot.x, -PITCH_LIMIT, PITCH_LIMIT), cameraRot.y % (2 * pi))
-
-	local cameraCFrame = CFrame.new(cameraPos)
-		* CFrame.fromOrientation(cameraRot.x, cameraRot.y, 0)
-		* CFrame.new(vel * NAV_GAIN * dt)
-	cameraPos = cameraCFrame.p
-
-	Camera.CFrame = cameraCFrame
-	Camera.Focus = cameraCFrame * CFrame.new(0, 0, -GetFocusDistance(cameraCFrame))
-	Camera.FieldOfView = cameraFov
-end
-
-------------------------------------------------------------------------
-
-local PlayerState = {}
-do
-	local mouseBehavior
-	local mouseIconEnabled
-	local cameraType
-	local cameraFocus
-	local cameraCFrame
-	local cameraFieldOfView
-	local screenGuis = {}
-	local coreGuis = {
-		Backpack = true,
-		Chat = true,
-		Health = true,
-		PlayerList = true,
-	}
-	local setCores = {
-		BadgesNotificationsActive = true,
-		PointsNotificationsActive = true,
-	}
-
-	-- Save state and set up for freecam
-	function PlayerState.Push()
-		-- for name in pairs(coreGuis) do
-		-- 	coreGuis[name] = StarterGui:GetCoreGuiEnabled(Enum.CoreGuiType[name])
-		-- 	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType[name], false)
-		-- end
-		-- for name in pairs(setCores) do
-		-- 	setCores[name] = StarterGui:GetCore(name)
-		-- 	StarterGui:SetCore(name, false)
-		-- end
-		-- local playergui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
-		-- if playergui then
-		-- 	for _, gui in pairs(playergui:GetChildren()) do
-		-- 		if gui:IsA("ScreenGui") and gui.Enabled then
-		-- 			screenGuis[#screenGuis + 1] = gui
-		-- 			gui.Enabled = false
-		-- 		end
-		-- 	end
-		-- end
-
-		cameraFieldOfView = Camera.FieldOfView
-		Camera.FieldOfView = 70
-
-		-- cameraType = Camera.CameraType
-		-- Camera.CameraType = Enum.CameraType.Custom
-
-		cameraCFrame = Camera.CFrame
-		cameraFocus = Camera.Focus
-
-		-- mouseIconEnabled = UserInputService.MouseIconEnabled
-		-- UserInputService.MouseIconEnabled = false
-
-		mouseBehavior = UserInputService.MouseBehavior
-		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-	end
-
-	-- Restore state
-	function PlayerState.Pop()
-		-- for name, isEnabled in pairs(coreGuis) do
-		-- 	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType[name], isEnabled)
-		-- end
-		-- for name, isEnabled in pairs(setCores) do
-		-- 	StarterGui:SetCore(name, isEnabled)
-		-- end
-		-- for _, gui in pairs(screenGuis) do
-		-- 	if gui.Parent then
-		-- 		gui.Enabled = true
-		-- 	end
-		-- end
-
-		Camera.FieldOfView = cameraFieldOfView
-		cameraFieldOfView = nil
-
-		-- Camera.CameraType = cameraType
-		-- cameraType = nil
-
-		Camera.CFrame = cameraCFrame
-		cameraCFrame = nil
-
-		Camera.Focus = cameraFocus
-		cameraFocus = nil
-
-		-- UserInputService.MouseIconEnabled = mouseIconEnabled
-		-- mouseIconEnabled = nil
-
-		UserInputService.MouseBehavior = mouseBehavior
-		mouseBehavior = nil
-	end
-end
-
-local function StartFreecam()
-	local cameraCFrame = Camera.CFrame
-	cameraRot = Vector2.new(cameraCFrame:toEulerAnglesYXZ())
-	cameraPos = cameraCFrame.p
-	cameraFov = Camera.FieldOfView
-
-	velSpring:Reset(Vector3.new())
-	panSpring:Reset(Vector2.new())
-	fovSpring:Reset(0)
-
-	PlayerState.Push()
-	RunService:BindToRenderStep(FREECAM_RENDER_ID, Enum.RenderPriority.Camera.Value + 1, StepFreecam)
-	Input.StartCapture()
-end
-
-local function StopFreecam()
-	Input.StopCapture()
-	RunService:UnbindFromRenderStep(FREECAM_RENDER_ID)
-	PlayerState.Pop()
-end
-
-------------------------------------------------------------------------
-
-local enabled = false
-
-local function EnableFreecam()
-	if not enabled then
-		StartFreecam()
-		enabled = true
-	end
-end
-
-local function DisableFreecam()
-	if enabled then
-		StopFreecam()
-		enabled = false
-	end
-end
-
-return {
-	EnableFreecam = EnableFreecam,
-	DisableFreecam = DisableFreecam,
-}
 
 end)() end,
     [26] = function()local wax,script,require=ImportGlobals(26)local ImportGlobals return (function(...)--!strict
@@ -10405,2066 +10136,7 @@ Maid.Destroy = Maid.DoCleaning
 
 return Maid
 end)() end,
-    [81] = function()local wax,script,require=ImportGlobals(81)local ImportGlobals return (function(...)--[[
-	An implementation of Promises similar to Promise/A+.
-]]
-
-local ERROR_NON_PROMISE_IN_LIST = "Non-promise value passed into %s at index %s"
-local ERROR_NON_LIST = "Please pass a list of promises to %s"
-local ERROR_NON_FUNCTION = "Please pass a handler function to %s!"
-local MODE_KEY_METATABLE = { __mode = "k" }
-
-local function isCallable(value)
-	if type(value) == "function" then
-		return true
-	end
-
-	if type(value) == "table" then
-		local metatable = getmetatable(value)
-		if metatable and type(rawget(metatable, "__call")) == "function" then
-			return true
-		end
-	end
-
-	return false
-end
-
---[[
-	Creates an enum dictionary with some metamethods to prevent common mistakes.
-]]
-local function makeEnum(enumName, members)
-	local enum = {}
-
-	for _, memberName in ipairs(members) do
-		enum[memberName] = memberName
-	end
-
-	return setmetatable(enum, {
-		__index = function(_, k)
-			error(string.format("%s is not in %s!", k, enumName), 2)
-		end,
-		__newindex = function()
-			error(string.format("Creating new members in %s is not allowed!", enumName), 2)
-		end,
-	})
-end
-
---[=[
-	An object to represent runtime errors that occur during execution.
-	Promises that experience an error like this will be rejected with
-	an instance of this object.
-
-	@class Error
-]=]
-local Error
-do
-	Error = {
-		Kind = makeEnum("Promise.Error.Kind", {
-			"ExecutionError",
-			"AlreadyCancelled",
-			"NotResolvedInTime",
-			"TimedOut",
-		}),
-	}
-	Error.__index = Error
-
-	function Error.new(options, parent)
-		options = options or {}
-		return setmetatable({
-			error = tostring(options.error) or "[This error has no error text.]",
-			trace = options.trace,
-			context = options.context,
-			kind = options.kind,
-			parent = parent,
-			createdTick = os.clock(),
-			createdTrace = debug.traceback(),
-		}, Error)
-	end
-
-	function Error.is(anything)
-		if type(anything) == "table" then
-			local metatable = getmetatable(anything)
-
-			if type(metatable) == "table" then
-				return rawget(anything, "error") ~= nil and type(rawget(metatable, "extend")) == "function"
-			end
-		end
-
-		return false
-	end
-
-	function Error.isKind(anything, kind)
-		assert(kind ~= nil, "Argument #2 to Promise.Error.isKind must not be nil")
-
-		return Error.is(anything) and anything.kind == kind
-	end
-
-	function Error:extend(options)
-		options = options or {}
-
-		options.kind = options.kind or self.kind
-
-		return Error.new(options, self)
-	end
-
-	function Error:getErrorChain()
-		local runtimeErrors = { self }
-
-		while runtimeErrors[#runtimeErrors].parent do
-			table.insert(runtimeErrors, runtimeErrors[#runtimeErrors].parent)
-		end
-
-		return runtimeErrors
-	end
-
-	function Error:__tostring()
-		local errorStrings = {
-			string.format("-- Promise.Error(%s) --", self.kind or "?"),
-		}
-
-		for _, runtimeError in ipairs(self:getErrorChain()) do
-			table.insert(
-				errorStrings,
-				table.concat({
-					runtimeError.trace or runtimeError.error,
-					runtimeError.context,
-				}, "\n")
-			)
-		end
-
-		return table.concat(errorStrings, "\n")
-	end
-end
-
---[[
-	Packs a number of arguments into a table and returns its length.
-
-	Used to cajole varargs without dropping sparse values.
-]]
-local function pack(...)
-	return select("#", ...), { ... }
-end
-
---[[
-	Returns first value (success), and packs all following values.
-]]
-local function packResult(success, ...)
-	return success, select("#", ...), { ... }
-end
-
-local function makeErrorHandler(traceback)
-	assert(traceback ~= nil, "traceback is nil")
-
-	return function(err)
-		-- If the error object is already a table, forward it directly.
-		-- Should we extend the error here and add our own trace?
-
-		if type(err) == "table" then
-			return err
-		end
-
-		return Error.new({
-			error = err,
-			kind = Error.Kind.ExecutionError,
-			trace = debug.traceback(tostring(err), 2),
-			context = "Promise created at:\n\n" .. traceback,
-		})
-	end
-end
-
---[[
-	Calls a Promise executor with error handling.
-]]
-local function runExecutor(traceback, callback, ...)
-	return packResult(xpcall(callback, makeErrorHandler(traceback), ...))
-end
-
---[[
-	Creates a function that invokes a callback with correct error handling and
-	resolution mechanisms.
-]]
-local function createAdvancer(traceback, callback, resolve, reject)
-	return function(...)
-		local ok, resultLength, result = runExecutor(traceback, callback, ...)
-
-		if ok then
-			resolve(unpack(result, 1, resultLength))
-		else
-			reject(result[1])
-		end
-	end
-end
-
-local function isEmpty(t)
-	return next(t) == nil
-end
-
---[=[
-	An enum value used to represent the Promise's status.
-	@interface Status
-	@tag enum
-	@within Promise
-	.Started "Started" -- The Promise is executing, and not settled yet.
-	.Resolved "Resolved" -- The Promise finished successfully.
-	.Rejected "Rejected" -- The Promise was rejected.
-	.Cancelled "Cancelled" -- The Promise was cancelled before it finished.
-]=]
---[=[
-	@prop Status Status
-	@within Promise
-	@readonly
-	@tag enums
-	A table containing all members of the `Status` enum, e.g., `Promise.Status.Resolved`.
-]=]
---[=[
-	A Promise is an object that represents a value that will exist in the future, but doesn't right now.
-	Promises allow you to then attach callbacks that can run once the value becomes available (known as *resolving*),
-	or if an error has occurred (known as *rejecting*).
-
-	@class Promise
-	@__index prototype
-]=]
-local Promise = {
-	Error = Error,
-	Status = makeEnum("Promise.Status", { "Started", "Resolved", "Rejected", "Cancelled" }),
-	_getTime = os.clock,
-	_timeEvent = game:GetService("RunService").Heartbeat,
-	_unhandledRejectionCallbacks = {},
-}
-Promise.prototype = {}
-Promise.__index = Promise.prototype
-
-function Promise._new(traceback, callback, parent)
-	if parent ~= nil and not Promise.is(parent) then
-		error("Argument #2 to Promise.new must be a promise or nil", 2)
-	end
-
-	local self = {
-		-- The executor thread.
-		_thread = nil,
-
-		-- Used to locate where a promise was created
-		_source = traceback,
-
-		_status = Promise.Status.Started,
-
-		-- A table containing a list of all results, whether success or failure.
-		-- Only valid if _status is set to something besides Started
-		_values = nil,
-
-		-- Lua doesn't like sparse arrays very much, so we explicitly store the
-		-- length of _values to handle middle nils.
-		_valuesLength = -1,
-
-		-- Tracks if this Promise has no error observers..
-		_unhandledRejection = true,
-
-		-- Queues representing functions we should invoke when we update!
-		_queuedResolve = {},
-		_queuedReject = {},
-		_queuedFinally = {},
-
-		-- The function to run when/if this promise is cancelled.
-		_cancellationHook = nil,
-
-		-- The "parent" of this promise in a promise chain. Required for
-		-- cancellation propagation upstream.
-		_parent = parent,
-
-		-- Consumers are Promises that have chained onto this one.
-		-- We track them for cancellation propagation downstream.
-		_consumers = setmetatable({}, MODE_KEY_METATABLE),
-	}
-
-	if parent and parent._status == Promise.Status.Started then
-		parent._consumers[self] = true
-	end
-
-	setmetatable(self, Promise)
-
-	local function resolve(...)
-		self:_resolve(...)
-	end
-
-	local function reject(...)
-		self:_reject(...)
-	end
-
-	local function onCancel(cancellationHook)
-		if cancellationHook then
-			if self._status == Promise.Status.Cancelled then
-				cancellationHook()
-			else
-				self._cancellationHook = cancellationHook
-			end
-		end
-
-		return self._status == Promise.Status.Cancelled
-	end
-
-	self._thread = coroutine.create(function()
-		local ok, _, result = runExecutor(self._source, callback, resolve, reject, onCancel)
-
-		if not ok then
-			reject(result[1])
-		end
-	end)
-
-	task.spawn(self._thread)
-
-	return self
-end
-
---[=[
-	Construct a new Promise that will be resolved or rejected with the given callbacks.
-
-	If you `resolve` with a Promise, it will be chained onto.
-
-	You can safely yield within the executor function and it will not block the creating thread.
-
-	```lua
-	local myFunction()
-		return Promise.new(function(resolve, reject, onCancel)
-			wait(1)
-			resolve("Hello world!")
-		end)
-	end
-
-	myFunction():andThen(print)
-	```
-
-	You do not need to use `pcall` within a Promise. Errors that occur during execution will be caught and turned into a rejection automatically. If `error()` is called with a table, that table will be the rejection value. Otherwise, string errors will be converted into `Promise.Error(Promise.Error.Kind.ExecutionError)` objects for tracking debug information.
-
-	You may register an optional cancellation hook by using the `onCancel` argument:
-
-	* This should be used to abort any ongoing operations leading up to the promise being settled.
-	* Call the `onCancel` function with a function callback as its only argument to set a hook which will in turn be called when/if the promise is cancelled.
-	* `onCancel` returns `true` if the Promise was already cancelled when you called `onCancel`.
-	* Calling `onCancel` with no argument will not override a previously set cancellation hook, but it will still return `true` if the Promise is currently cancelled.
-	* You can set the cancellation hook at any time before resolving.
-	* When a promise is cancelled, calls to `resolve` or `reject` will be ignored, regardless of if you set a cancellation hook or not.
-
-	:::caution
-	If the Promise is cancelled, the `executor` thread is closed with `coroutine.close` after the cancellation hook is called.
-
-	You must perform any cleanup code in the cancellation hook: any time your executor yields, it **may never resume**.
-	:::
-
-	@param executor (resolve: (...: any) -> (), reject: (...: any) -> (), onCancel: (abortHandler?: () -> ()) -> boolean) -> ()
-	@return Promise
-]=]
-function Promise.new(executor)
-	return Promise._new(debug.traceback(nil, 2), executor)
-end
-
-function Promise:__tostring()
-	return string.format("Promise(%s)", self._status)
-end
-
---[=[
-	The same as [Promise.new](/api/Promise#new), except execution begins after the next `Heartbeat` event.
-
-	This is a spiritual replacement for `spawn`, but it does not suffer from the same [issues](https://eryn.io/gist/3db84579866c099cdd5bb2ff37947cec) as `spawn`.
-
-	```lua
-	local function waitForChild(instance, childName, timeout)
-	  return Promise.defer(function(resolve, reject)
-		local child = instance:WaitForChild(childName, timeout)
-
-		;(child and resolve or reject)(child)
-	  end)
-	end
-	```
-
-	@param executor (resolve: (...: any) -> (), reject: (...: any) -> (), onCancel: (abortHandler?: () -> ()) -> boolean) -> ()
-	@return Promise
-]=]
-function Promise.defer(executor)
-	local traceback = debug.traceback(nil, 2)
-	local promise
-	promise = Promise._new(traceback, function(resolve, reject, onCancel)
-		local connection
-		connection = Promise._timeEvent:Connect(function()
-			connection:Disconnect()
-			local ok, _, result = runExecutor(traceback, executor, resolve, reject, onCancel)
-
-			if not ok then
-				reject(result[1])
-			end
-		end)
-	end)
-
-	return promise
-end
-
--- Backwards compatibility
-Promise.async = Promise.defer
-
---[=[
-	Creates an immediately resolved Promise with the given value.
-
-	```lua
-	-- Example using Promise.resolve to deliver cached values:
-	function getSomething(name)
-		if cache[name] then
-			return Promise.resolve(cache[name])
-		else
-			return Promise.new(function(resolve, reject)
-				local thing = getTheThing()
-				cache[name] = thing
-
-				resolve(thing)
-			end)
-		end
-	end
-	```
-
-	@param ... any
-	@return Promise<...any>
-]=]
-function Promise.resolve(...)
-	local length, values = pack(...)
-	return Promise._new(debug.traceback(nil, 2), function(resolve)
-		resolve(unpack(values, 1, length))
-	end)
-end
-
---[=[
-	Creates an immediately rejected Promise with the given value.
-
-	:::caution
-	Something needs to consume this rejection (i.e. `:catch()` it), otherwise it will emit an unhandled Promise rejection warning on the next frame. Thus, you should not create and store rejected Promises for later use. Only create them on-demand as needed.
-	:::
-
-	@param ... any
-	@return Promise<...any>
-]=]
-function Promise.reject(...)
-	local length, values = pack(...)
-	return Promise._new(debug.traceback(nil, 2), function(_, reject)
-		reject(unpack(values, 1, length))
-	end)
-end
-
---[[
-	Runs a non-promise-returning function as a Promise with the
-  given arguments.
-]]
-function Promise._try(traceback, callback, ...)
-	local valuesLength, values = pack(...)
-
-	return Promise._new(traceback, function(resolve)
-		resolve(callback(unpack(values, 1, valuesLength)))
-	end)
-end
-
---[=[
-	Begins a Promise chain, calling a function and returning a Promise resolving with its return value. If the function errors, the returned Promise will be rejected with the error. You can safely yield within the Promise.try callback.
-
-	:::info
-	`Promise.try` is similar to [Promise.promisify](#promisify), except the callback is invoked immediately instead of returning a new function.
-	:::
-
-	```lua
-	Promise.try(function()
-		return math.random(1, 2) == 1 and "ok" or error("Oh an error!")
-	end)
-		:andThen(function(text)
-			print(text)
-		end)
-		:catch(function(err)
-			warn("Something went wrong")
-		end)
-	```
-
-	@param callback (...: T...) -> ...any
-	@param ... T... -- Additional arguments passed to `callback`
-	@return Promise
-]=]
-function Promise.try(callback, ...)
-	return Promise._try(debug.traceback(nil, 2), callback, ...)
-end
-
---[[
-	Returns a new promise that:
-		* is resolved when all input promises resolve
-		* is rejected if ANY input promises reject
-]]
-function Promise._all(traceback, promises, amount)
-	if type(promises) ~= "table" then
-		error(string.format(ERROR_NON_LIST, "Promise.all"), 3)
-	end
-
-	-- We need to check that each value is a promise here so that we can produce
-	-- a proper error rather than a rejected promise with our error.
-	for i, promise in pairs(promises) do
-		if not Promise.is(promise) then
-			error(string.format(ERROR_NON_PROMISE_IN_LIST, "Promise.all", tostring(i)), 3)
-		end
-	end
-
-	-- If there are no values then return an already resolved promise.
-	if #promises == 0 or amount == 0 then
-		return Promise.resolve({})
-	end
-
-	return Promise._new(traceback, function(resolve, reject, onCancel)
-		-- An array to contain our resolved values from the given promises.
-		local resolvedValues = {}
-		local newPromises = {}
-
-		-- Keep a count of resolved promises because just checking the resolved
-		-- values length wouldn't account for promises that resolve with nil.
-		local resolvedCount = 0
-		local rejectedCount = 0
-		local done = false
-
-		local function cancel()
-			for _, promise in ipairs(newPromises) do
-				promise:cancel()
-			end
-		end
-
-		-- Called when a single value is resolved and resolves if all are done.
-		local function resolveOne(i, ...)
-			if done then
-				return
-			end
-
-			resolvedCount = resolvedCount + 1
-
-			if amount == nil then
-				resolvedValues[i] = ...
-			else
-				resolvedValues[resolvedCount] = ...
-			end
-
-			if resolvedCount >= (amount or #promises) then
-				done = true
-				resolve(resolvedValues)
-				cancel()
-			end
-		end
-
-		onCancel(cancel)
-
-		-- We can assume the values inside `promises` are all promises since we
-		-- checked above.
-		for i, promise in ipairs(promises) do
-			newPromises[i] = promise:andThen(function(...)
-				resolveOne(i, ...)
-			end, function(...)
-				rejectedCount = rejectedCount + 1
-
-				if amount == nil or #promises - rejectedCount < amount then
-					cancel()
-					done = true
-
-					reject(...)
-				end
-			end)
-		end
-
-		if done then
-			cancel()
-		end
-	end)
-end
-
---[=[
-	Accepts an array of Promises and returns a new promise that:
-	* is resolved after all input promises resolve.
-	* is rejected if *any* input promises reject.
-
-	:::info
-	Only the first return value from each promise will be present in the resulting array.
-	:::
-
-	After any input Promise rejects, all other input Promises that are still pending will be cancelled if they have no other consumers.
-
-	```lua
-	local promises = {
-		returnsAPromise("example 1"),
-		returnsAPromise("example 2"),
-		returnsAPromise("example 3"),
-	}
-
-	return Promise.all(promises)
-	```
-
-	@param promises {Promise<T>}
-	@return Promise<{T}>
-]=]
-function Promise.all(promises)
-	return Promise._all(debug.traceback(nil, 2), promises)
-end
-
---[=[
-	Folds an array of values or promises into a single value. The array is traversed sequentially.
-
-	The reducer function can return a promise or value directly. Each iteration receives the resolved value from the previous, and the first receives your defined initial value.
-
-	The folding will stop at the first rejection encountered.
-	```lua
-	local basket = {"blueberry", "melon", "pear", "melon"}
-	Promise.fold(basket, function(cost, fruit)
-		if fruit == "blueberry" then
-			return cost -- blueberries are free!
-		else
-			-- call a function that returns a promise with the fruit price
-			return fetchPrice(fruit):andThen(function(fruitCost)
-				return cost + fruitCost
-			end)
-		end
-	end, 0)
-	```
-
-	@since v3.1.0
-	@param list {T | Promise<T>}
-	@param reducer (accumulator: U, value: T, index: number) -> U | Promise<U>
-	@param initialValue U
-]=]
-function Promise.fold(list, reducer, initialValue)
-	assert(type(list) == "table", "Bad argument #1 to Promise.fold: must be a table")
-	assert(isCallable(reducer), "Bad argument #2 to Promise.fold: must be a function")
-
-	local accumulator = Promise.resolve(initialValue)
-	return Promise.each(list, function(resolvedElement, i)
-		accumulator = accumulator:andThen(function(previousValueResolved)
-			return reducer(previousValueResolved, resolvedElement, i)
-		end)
-	end):andThen(function()
-		return accumulator
-	end)
-end
-
---[=[
-	Accepts an array of Promises and returns a Promise that is resolved as soon as `count` Promises are resolved from the input array. The resolved array values are in the order that the Promises resolved in. When this Promise resolves, all other pending Promises are cancelled if they have no other consumers.
-
-	`count` 0 results in an empty array. The resultant array will never have more than `count` elements.
-
-	```lua
-	local promises = {
-		returnsAPromise("example 1"),
-		returnsAPromise("example 2"),
-		returnsAPromise("example 3"),
-	}
-
-	return Promise.some(promises, 2) -- Only resolves with first 2 promises to resolve
-	```
-
-	@param promises {Promise<T>}
-	@param count number
-	@return Promise<{T}>
-]=]
-function Promise.some(promises, count)
-	assert(type(count) == "number", "Bad argument #2 to Promise.some: must be a number")
-
-	return Promise._all(debug.traceback(nil, 2), promises, count)
-end
-
---[=[
-	Accepts an array of Promises and returns a Promise that is resolved as soon as *any* of the input Promises resolves. It will reject only if *all* input Promises reject. As soon as one Promises resolves, all other pending Promises are cancelled if they have no other consumers.
-
-	Resolves directly with the value of the first resolved Promise. This is essentially [[Promise.some]] with `1` count, except the Promise resolves with the value directly instead of an array with one element.
-
-	```lua
-	local promises = {
-		returnsAPromise("example 1"),
-		returnsAPromise("example 2"),
-		returnsAPromise("example 3"),
-	}
-
-	return Promise.any(promises) -- Resolves with first value to resolve (only rejects if all 3 rejected)
-	```
-
-	@param promises {Promise<T>}
-	@return Promise<T>
-]=]
-function Promise.any(promises)
-	return Promise._all(debug.traceback(nil, 2), promises, 1):andThen(function(values)
-		return values[1]
-	end)
-end
-
---[=[
-	Accepts an array of Promises and returns a new Promise that resolves with an array of in-place Statuses when all input Promises have settled. This is equivalent to mapping `promise:finally` over the array of Promises.
-
-	```lua
-	local promises = {
-		returnsAPromise("example 1"),
-		returnsAPromise("example 2"),
-		returnsAPromise("example 3"),
-	}
-
-	return Promise.allSettled(promises)
-	```
-
-	@param promises {Promise<T>}
-	@return Promise<{Status}>
-]=]
-function Promise.allSettled(promises)
-	if type(promises) ~= "table" then
-		error(string.format(ERROR_NON_LIST, "Promise.allSettled"), 2)
-	end
-
-	-- We need to check that each value is a promise here so that we can produce
-	-- a proper error rather than a rejected promise with our error.
-	for i, promise in pairs(promises) do
-		if not Promise.is(promise) then
-			error(string.format(ERROR_NON_PROMISE_IN_LIST, "Promise.allSettled", tostring(i)), 2)
-		end
-	end
-
-	-- If there are no values then return an already resolved promise.
-	if #promises == 0 then
-		return Promise.resolve({})
-	end
-
-	return Promise._new(debug.traceback(nil, 2), function(resolve, _, onCancel)
-		-- An array to contain our resolved values from the given promises.
-		local fates = {}
-		local newPromises = {}
-
-		-- Keep a count of resolved promises because just checking the resolved
-		-- values length wouldn't account for promises that resolve with nil.
-		local finishedCount = 0
-
-		-- Called when a single value is resolved and resolves if all are done.
-		local function resolveOne(i, ...)
-			finishedCount = finishedCount + 1
-
-			fates[i] = ...
-
-			if finishedCount >= #promises then
-				resolve(fates)
-			end
-		end
-
-		onCancel(function()
-			for _, promise in ipairs(newPromises) do
-				promise:cancel()
-			end
-		end)
-
-		-- We can assume the values inside `promises` are all promises since we
-		-- checked above.
-		for i, promise in ipairs(promises) do
-			newPromises[i] = promise:finally(function(...)
-				resolveOne(i, ...)
-			end)
-		end
-	end)
-end
-
---[=[
-	Accepts an array of Promises and returns a new promise that is resolved or rejected as soon as any Promise in the array resolves or rejects.
-
-	:::warning
-	If the first Promise to settle from the array settles with a rejection, the resulting Promise from `race` will reject.
-
-	If you instead want to tolerate rejections, and only care about at least one Promise resolving, you should use [Promise.any](#any) or [Promise.some](#some) instead.
-	:::
-
-	All other Promises that don't win the race will be cancelled if they have no other consumers.
-
-	```lua
-	local promises = {
-		returnsAPromise("example 1"),
-		returnsAPromise("example 2"),
-		returnsAPromise("example 3"),
-	}
-
-	return Promise.race(promises) -- Only returns 1st value to resolve or reject
-	```
-
-	@param promises {Promise<T>}
-	@return Promise<T>
-]=]
-function Promise.race(promises)
-	assert(type(promises) == "table", string.format(ERROR_NON_LIST, "Promise.race"))
-
-	for i, promise in pairs(promises) do
-		assert(Promise.is(promise), string.format(ERROR_NON_PROMISE_IN_LIST, "Promise.race", tostring(i)))
-	end
-
-	return Promise._new(debug.traceback(nil, 2), function(resolve, reject, onCancel)
-		local newPromises = {}
-		local finished = false
-
-		local function cancel()
-			for _, promise in ipairs(newPromises) do
-				promise:cancel()
-			end
-		end
-
-		local function finalize(callback)
-			return function(...)
-				cancel()
-				finished = true
-				return callback(...)
-			end
-		end
-
-		if onCancel(finalize(reject)) then
-			return
-		end
-
-		for i, promise in ipairs(promises) do
-			newPromises[i] = promise:andThen(finalize(resolve), finalize(reject))
-		end
-
-		if finished then
-			cancel()
-		end
-	end)
-end
-
---[=[
-	Iterates serially over the given an array of values, calling the predicate callback on each value before continuing.
-
-	If the predicate returns a Promise, we wait for that Promise to resolve before moving on to the next item
-	in the array.
-
-	:::info
-	`Promise.each` is similar to `Promise.all`, except the Promises are ran in order instead of all at once.
-
-	But because Promises are eager, by the time they are created, they're already running. Thus, we need a way to defer creation of each Promise until a later time.
-
-	The predicate function exists as a way for us to operate on our data instead of creating a new closure for each Promise. If you would prefer, you can pass in an array of functions, and in the predicate, call the function and return its return value.
-	:::
-
-	```lua
-	Promise.each({
-		"foo",
-		"bar",
-		"baz",
-		"qux"
-	}, function(value, index)
-		return Promise.delay(1):andThen(function()
-		print(("%d) Got %s!"):format(index, value))
-		end)
-	end)
-
-	--[[
-		(1 second passes)
-		> 1) Got foo!
-		(1 second passes)
-		> 2) Got bar!
-		(1 second passes)
-		> 3) Got baz!
-		(1 second passes)
-		> 4) Got qux!
-	]]
-	```
-
-	If the Promise a predicate returns rejects, the Promise from `Promise.each` is also rejected with the same value.
-
-	If the array of values contains a Promise, when we get to that point in the list, we wait for the Promise to resolve before calling the predicate with the value.
-
-	If a Promise in the array of values is already Rejected when `Promise.each` is called, `Promise.each` rejects with that value immediately (the predicate callback will never be called even once). If a Promise in the list is already Cancelled when `Promise.each` is called, `Promise.each` rejects with `Promise.Error(Promise.Error.Kind.AlreadyCancelled`). If a Promise in the array of values is Started at first, but later rejects, `Promise.each` will reject with that value and iteration will not continue once iteration encounters that value.
-
-	Returns a Promise containing an array of the returned/resolved values from the predicate for each item in the array of values.
-
-	If this Promise returned from `Promise.each` rejects or is cancelled for any reason, the following are true:
-	- Iteration will not continue.
-	- Any Promises within the array of values will now be cancelled if they have no other consumers.
-	- The Promise returned from the currently active predicate will be cancelled if it hasn't resolved yet.
-
-	@since 3.0.0
-	@param list {T | Promise<T>}
-	@param predicate (value: T, index: number) -> U | Promise<U>
-	@return Promise<{U}>
-]=]
-function Promise.each(list, predicate)
-	assert(type(list) == "table", string.format(ERROR_NON_LIST, "Promise.each"))
-	assert(isCallable(predicate), string.format(ERROR_NON_FUNCTION, "Promise.each"))
-
-	return Promise._new(debug.traceback(nil, 2), function(resolve, reject, onCancel)
-		local results = {}
-		local promisesToCancel = {}
-
-		local cancelled = false
-
-		local function cancel()
-			for _, promiseToCancel in ipairs(promisesToCancel) do
-				promiseToCancel:cancel()
-			end
-		end
-
-		onCancel(function()
-			cancelled = true
-
-			cancel()
-		end)
-
-		-- We need to preprocess the list of values and look for Promises.
-		-- If we find some, we must register our andThen calls now, so that those Promises have a consumer
-		-- from us registered. If we don't do this, those Promises might get cancelled by something else
-		-- before we get to them in the series because it's not possible to tell that we plan to use it
-		-- unless we indicate it here.
-
-		local preprocessedList = {}
-
-		for index, value in ipairs(list) do
-			if Promise.is(value) then
-				if value:getStatus() == Promise.Status.Cancelled then
-					cancel()
-					return reject(Error.new({
-						error = "Promise is cancelled",
-						kind = Error.Kind.AlreadyCancelled,
-						context = string.format(
-							"The Promise that was part of the array at index %d passed into Promise.each was already cancelled when Promise.each began.\n\nThat Promise was created at:\n\n%s",
-							index,
-							value._source
-						),
-					}))
-				elseif value:getStatus() == Promise.Status.Rejected then
-					cancel()
-					return reject(select(2, value:await()))
-				end
-
-				-- Chain a new Promise from this one so we only cancel ours
-				local ourPromise = value:andThen(function(...)
-					return ...
-				end)
-
-				table.insert(promisesToCancel, ourPromise)
-				preprocessedList[index] = ourPromise
-			else
-				preprocessedList[index] = value
-			end
-		end
-
-		for index, value in ipairs(preprocessedList) do
-			if Promise.is(value) then
-				local success
-				success, value = value:await()
-
-				if not success then
-					cancel()
-					return reject(value)
-				end
-			end
-
-			if cancelled then
-				return
-			end
-
-			local predicatePromise = Promise.resolve(predicate(value, index))
-
-			table.insert(promisesToCancel, predicatePromise)
-
-			local success, result = predicatePromise:await()
-
-			if not success then
-				cancel()
-				return reject(result)
-			end
-
-			results[index] = result
-		end
-
-		resolve(results)
-	end)
-end
-
---[=[
-	Checks whether the given object is a Promise via duck typing. This only checks if the object is a table and has an `andThen` method.
-
-	@param object any
-	@return boolean -- `true` if the given `object` is a Promise.
-]=]
-function Promise.is(object)
-	if type(object) ~= "table" then
-		return false
-	end
-
-	local objectMetatable = getmetatable(object)
-
-	if objectMetatable == Promise then
-		-- The Promise came from this library.
-		return true
-	elseif objectMetatable == nil then
-		-- No metatable, but we should still chain onto tables with andThen methods
-		return isCallable(object.andThen)
-	elseif
-		type(objectMetatable) == "table"
-		and type(rawget(objectMetatable, "__index")) == "table"
-		and isCallable(rawget(rawget(objectMetatable, "__index"), "andThen"))
-	then
-		-- Maybe this came from a different or older Promise library.
-		return true
-	end
-
-	return false
-end
-
---[=[
-	Wraps a function that yields into one that returns a Promise.
-
-	Any errors that occur while executing the function will be turned into rejections.
-
-	:::info
-	`Promise.promisify` is similar to [Promise.try](#try), except the callback is returned as a callable function instead of being invoked immediately.
-	:::
-
-	```lua
-	local sleep = Promise.promisify(wait)
-
-	sleep(1):andThen(print)
-	```
-
-	```lua
-	local isPlayerInGroup = Promise.promisify(function(player, groupId)
-		return player:IsInGroup(groupId)
-	end)
-	```
-
-	@param callback (...: any) -> ...any
-	@return (...: any) -> Promise
-]=]
-function Promise.promisify(callback)
-	return function(...)
-		return Promise._try(debug.traceback(nil, 2), callback, ...)
-	end
-end
-
---[=[
-	Returns a Promise that resolves after `seconds` seconds have passed. The Promise resolves with the actual amount of time that was waited.
-
-	This function is **not** a wrapper around `wait`. `Promise.delay` uses a custom scheduler which provides more accurate timing. As an optimization, cancelling this Promise instantly removes the task from the scheduler.
-
-	:::warning
-	Passing `NaN`, infinity, or a number less than 1/60 is equivalent to passing 1/60.
-	:::
-
-	```lua
-		Promise.delay(5):andThenCall(print, "This prints after 5 seconds")
-	```
-
-	@function delay
-	@within Promise
-	@param seconds number
-	@return Promise<number>
-]=]
-do
-	-- uses a sorted doubly linked list (queue) to achieve O(1) remove operations and O(n) for insert
-
-	-- the initial node in the linked list
-	local first
-	local connection
-
-	function Promise.delay(seconds)
-		assert(type(seconds) == "number", "Bad argument #1 to Promise.delay, must be a number.")
-		-- If seconds is -INF, INF, NaN, or less than 1 / 60, assume seconds is 1 / 60.
-		-- This mirrors the behavior of wait()
-		if not (seconds >= 1 / 60) or seconds == math.huge then
-			seconds = 1 / 60
-		end
-
-		return Promise._new(debug.traceback(nil, 2), function(resolve, _, onCancel)
-			local startTime = Promise._getTime()
-			local endTime = startTime + seconds
-
-			local node = {
-				resolve = resolve,
-				startTime = startTime,
-				endTime = endTime,
-			}
-
-			if connection == nil then -- first is nil when connection is nil
-				first = node
-				connection = Promise._timeEvent:Connect(function()
-					local threadStart = Promise._getTime()
-
-					while first ~= nil and first.endTime < threadStart do
-						local current = first
-						first = current.next
-
-						if first == nil then
-							connection:Disconnect()
-							connection = nil
-						else
-							first.previous = nil
-						end
-
-						current.resolve(Promise._getTime() - current.startTime)
-					end
-				end)
-			else -- first is non-nil
-				if first.endTime < endTime then -- if `node` should be placed after `first`
-					-- we will insert `node` between `current` and `next`
-					-- (i.e. after `current` if `next` is nil)
-					local current = first
-					local next = current.next
-
-					while next ~= nil and next.endTime < endTime do
-						current = next
-						next = current.next
-					end
-
-					-- `current` must be non-nil, but `next` could be `nil` (i.e. last item in list)
-					current.next = node
-					node.previous = current
-
-					if next ~= nil then
-						node.next = next
-						next.previous = node
-					end
-				else
-					-- set `node` to `first`
-					node.next = first
-					first.previous = node
-					first = node
-				end
-			end
-
-			onCancel(function()
-				-- remove node from queue
-				local next = node.next
-
-				if first == node then
-					if next == nil then -- if `node` is the first and last
-						connection:Disconnect()
-						connection = nil
-					else -- if `node` is `first` and not the last
-						next.previous = nil
-					end
-					first = next
-				else
-					local previous = node.previous
-					-- since `node` is not `first`, then we know `previous` is non-nil
-					previous.next = next
-
-					if next ~= nil then
-						next.previous = previous
-					end
-				end
-			end)
-		end)
-	end
-end
-
---[=[
-	Returns a new Promise that resolves if the chained Promise resolves within `seconds` seconds, or rejects if execution time exceeds `seconds`. The chained Promise will be cancelled if the timeout is reached.
-
-	Rejects with `rejectionValue` if it is non-nil. If a `rejectionValue` is not given, it will reject with a `Promise.Error(Promise.Error.Kind.TimedOut)`. This can be checked with [[Error.isKind]].
-
-	```lua
-	getSomething():timeout(5):andThen(function(something)
-		-- got something and it only took at max 5 seconds
-	end):catch(function(e)
-		-- Either getting something failed or the time was exceeded.
-
-		if Promise.Error.isKind(e, Promise.Error.Kind.TimedOut) then
-			warn("Operation timed out!")
-		else
-			warn("Operation encountered an error!")
-		end
-	end)
-	```
-
-	Sugar for:
-
-	```lua
-	Promise.race({
-		Promise.delay(seconds):andThen(function()
-			return Promise.reject(
-				rejectionValue == nil
-				and Promise.Error.new({ kind = Promise.Error.Kind.TimedOut })
-				or rejectionValue
-			)
-		end),
-		promise
-	})
-	```
-
-	@param seconds number
-	@param rejectionValue? any -- The value to reject with if the timeout is reached
-	@return Promise
-]=]
-function Promise.prototype:timeout(seconds, rejectionValue)
-	local traceback = debug.traceback(nil, 2)
-
-	return Promise.race({
-		Promise.delay(seconds):andThen(function()
-			return Promise.reject(rejectionValue == nil and Error.new({
-				kind = Error.Kind.TimedOut,
-				error = "Timed out",
-				context = string.format(
-					"Timeout of %d seconds exceeded.\n:timeout() called at:\n\n%s",
-					seconds,
-					traceback
-				),
-			}) or rejectionValue)
-		end),
-		self,
-	})
-end
-
---[=[
-	Returns the current Promise status.
-
-	@return Status
-]=]
-function Promise.prototype:getStatus()
-	return self._status
-end
-
---[[
-	Creates a new promise that receives the result of this promise.
-
-	The given callbacks are invoked depending on that result.
-]]
-function Promise.prototype:_andThen(traceback, successHandler, failureHandler)
-	self._unhandledRejection = false
-
-	-- If we are already cancelled, we return a cancelled Promise
-	if self._status == Promise.Status.Cancelled then
-		local promise = Promise.new(function() end)
-		promise:cancel()
-
-		return promise
-	end
-
-	-- Create a new promise to follow this part of the chain
-	return Promise._new(traceback, function(resolve, reject, onCancel)
-		-- Our default callbacks just pass values onto the next promise.
-		-- This lets success and failure cascade correctly!
-
-		local successCallback = resolve
-		if successHandler then
-			successCallback = createAdvancer(traceback, successHandler, resolve, reject)
-		end
-
-		local failureCallback = reject
-		if failureHandler then
-			failureCallback = createAdvancer(traceback, failureHandler, resolve, reject)
-		end
-
-		if self._status == Promise.Status.Started then
-			-- If we haven't resolved yet, put ourselves into the queue
-			table.insert(self._queuedResolve, successCallback)
-			table.insert(self._queuedReject, failureCallback)
-
-			onCancel(function()
-				-- These are guaranteed to exist because the cancellation handler is guaranteed to only
-				-- be called at most once
-				if self._status == Promise.Status.Started then
-					table.remove(self._queuedResolve, table.find(self._queuedResolve, successCallback))
-					table.remove(self._queuedReject, table.find(self._queuedReject, failureCallback))
-				end
-			end)
-		elseif self._status == Promise.Status.Resolved then
-			-- This promise has already resolved! Trigger success immediately.
-			successCallback(unpack(self._values, 1, self._valuesLength))
-		elseif self._status == Promise.Status.Rejected then
-			-- This promise died a terrible death! Trigger failure immediately.
-			failureCallback(unpack(self._values, 1, self._valuesLength))
-		end
-	end, self)
-end
-
---[=[
-	Chains onto an existing Promise and returns a new Promise.
-
-	:::warning
-	Within the failure handler, you should never assume that the rejection value is a string. Some rejections within the Promise library are represented by [[Error]] objects. If you want to treat it as a string for debugging, you should call `tostring` on it first.
-	:::
-
-	You can return a Promise from the success or failure handler and it will be chained onto.
-
-	Calling `andThen` on a cancelled Promise returns a cancelled Promise.
-
-	:::tip
-	If the Promise returned by `andThen` is cancelled, `successHandler` and `failureHandler` will not run.
-
-	To run code no matter what, use [Promise:finally].
-	:::
-
-	@param successHandler (...: any) -> ...any
-	@param failureHandler? (...: any) -> ...any
-	@return Promise<...any>
-]=]
-function Promise.prototype:andThen(successHandler, failureHandler)
-	assert(successHandler == nil or isCallable(successHandler), string.format(ERROR_NON_FUNCTION, "Promise:andThen"))
-	assert(failureHandler == nil or isCallable(failureHandler), string.format(ERROR_NON_FUNCTION, "Promise:andThen"))
-
-	return self:_andThen(debug.traceback(nil, 2), successHandler, failureHandler)
-end
-
---[=[
-	Shorthand for `Promise:andThen(nil, failureHandler)`.
-
-	Returns a Promise that resolves if the `failureHandler` worked without encountering an additional error.
-
-	:::warning
-	Within the failure handler, you should never assume that the rejection value is a string. Some rejections within the Promise library are represented by [[Error]] objects. If you want to treat it as a string for debugging, you should call `tostring` on it first.
-	:::
-
-	Calling `catch` on a cancelled Promise returns a cancelled Promise.
-
-	:::tip
-	If the Promise returned by `catch` is cancelled,  `failureHandler` will not run.
-
-	To run code no matter what, use [Promise:finally].
-	:::
-
-	@param failureHandler (...: any) -> ...any
-	@return Promise<...any>
-]=]
-function Promise.prototype:catch(failureHandler)
-	assert(failureHandler == nil or isCallable(failureHandler), string.format(ERROR_NON_FUNCTION, "Promise:catch"))
-	return self:_andThen(debug.traceback(nil, 2), nil, failureHandler)
-end
-
---[=[
-	Similar to [Promise.andThen](#andThen), except the return value is the same as the value passed to the handler. In other words, you can insert a `:tap` into a Promise chain without affecting the value that downstream Promises receive.
-
-	```lua
-		getTheValue()
-		:tap(print)
-		:andThen(function(theValue)
-			print("Got", theValue, "even though print returns nil!")
-		end)
-	```
-
-	If you return a Promise from the tap handler callback, its value will be discarded but `tap` will still wait until it resolves before passing the original value through.
-
-	@param tapHandler (...: any) -> ...any
-	@return Promise<...any>
-]=]
-function Promise.prototype:tap(tapHandler)
-	assert(isCallable(tapHandler), string.format(ERROR_NON_FUNCTION, "Promise:tap"))
-	return self:_andThen(debug.traceback(nil, 2), function(...)
-		local callbackReturn = tapHandler(...)
-
-		if Promise.is(callbackReturn) then
-			local length, values = pack(...)
-			return callbackReturn:andThen(function()
-				return unpack(values, 1, length)
-			end)
-		end
-
-		return ...
-	end)
-end
-
---[=[
-	Attaches an `andThen` handler to this Promise that calls the given callback with the predefined arguments. The resolved value is discarded.
-
-	```lua
-		promise:andThenCall(someFunction, "some", "arguments")
-	```
-
-	This is sugar for
-
-	```lua
-		promise:andThen(function()
-		return someFunction("some", "arguments")
-		end)
-	```
-
-	@param callback (...: any) -> any
-	@param ...? any -- Additional arguments which will be passed to `callback`
-	@return Promise
-]=]
-function Promise.prototype:andThenCall(callback, ...)
-	assert(isCallable(callback), string.format(ERROR_NON_FUNCTION, "Promise:andThenCall"))
-	local length, values = pack(...)
-	return self:_andThen(debug.traceback(nil, 2), function()
-		return callback(unpack(values, 1, length))
-	end)
-end
-
---[=[
-	Attaches an `andThen` handler to this Promise that discards the resolved value and returns the given value from it.
-
-	```lua
-		promise:andThenReturn("some", "values")
-	```
-
-	This is sugar for
-
-	```lua
-		promise:andThen(function()
-			return "some", "values"
-		end)
-	```
-
-	:::caution
-	Promises are eager, so if you pass a Promise to `andThenReturn`, it will begin executing before `andThenReturn` is reached in the chain. Likewise, if you pass a Promise created from [[Promise.reject]] into `andThenReturn`, it's possible that this will trigger the unhandled rejection warning. If you need to return a Promise, it's usually best practice to use [[Promise.andThen]].
-	:::
-
-	@param ... any -- Values to return from the function
-	@return Promise
-]=]
-function Promise.prototype:andThenReturn(...)
-	local length, values = pack(...)
-	return self:_andThen(debug.traceback(nil, 2), function()
-		return unpack(values, 1, length)
-	end)
-end
-
---[=[
-	Cancels this promise, preventing the promise from resolving or rejecting. Does not do anything if the promise is already settled.
-
-	Cancellations will propagate upwards and downwards through chained promises.
-
-	Promises will only be cancelled if all of their consumers are also cancelled. This is to say that if you call `andThen` twice on the same promise, and you cancel only one of the child promises, it will not cancel the parent promise until the other child promise is also cancelled.
-
-	```lua
-		promise:cancel()
-	```
-]=]
-function Promise.prototype:cancel()
-	if self._status ~= Promise.Status.Started then
-		return
-	end
-
-	self._status = Promise.Status.Cancelled
-
-	if self._cancellationHook then
-		self._cancellationHook()
-	end
-
-	coroutine.close(self._thread)
-
-	if self._parent then
-		self._parent:_consumerCancelled(self)
-	end
-
-	for child in pairs(self._consumers) do
-		child:cancel()
-	end
-
-	self:_finalize()
-end
-
---[[
-	Used to decrease the number of consumers by 1, and if there are no more,
-	cancel this promise.
-]]
-function Promise.prototype:_consumerCancelled(consumer)
-	if self._status ~= Promise.Status.Started then
-		return
-	end
-
-	self._consumers[consumer] = nil
-
-	if next(self._consumers) == nil then
-		self:cancel()
-	end
-end
-
---[[
-	Used to set a handler for when the promise resolves, rejects, or is
-	cancelled.
-]]
-function Promise.prototype:_finally(traceback, finallyHandler)
-	self._unhandledRejection = false
-
-	local promise = Promise._new(traceback, function(resolve, reject, onCancel)
-		local handlerPromise
-
-		onCancel(function()
-			-- The finally Promise is not a proper consumer of self. We don't care about the resolved value.
-			-- All we care about is running at the end. Therefore, if self has no other consumers, it's safe to
-			-- cancel. We don't need to hold out cancelling just because there's a finally handler.
-			self:_consumerCancelled(self)
-
-			if handlerPromise then
-				handlerPromise:cancel()
-			end
-		end)
-
-		local finallyCallback = resolve
-		if finallyHandler then
-			finallyCallback = function(...)
-				local callbackReturn = finallyHandler(...)
-
-				if Promise.is(callbackReturn) then
-					handlerPromise = callbackReturn
-
-					callbackReturn
-						:finally(function(status)
-							if status ~= Promise.Status.Rejected then
-								resolve(self)
-							end
-						end)
-						:catch(function(...)
-							reject(...)
-						end)
-				else
-					resolve(self)
-				end
-			end
-		end
-
-		if self._status == Promise.Status.Started then
-			-- The promise is not settled, so queue this.
-			table.insert(self._queuedFinally, finallyCallback)
-		else
-			-- The promise already settled or was cancelled, run the callback now.
-			finallyCallback(self._status)
-		end
-	end)
-
-	return promise
-end
-
---[=[
-	Set a handler that will be called regardless of the promise's fate. The handler is called when the promise is
-	resolved, rejected, *or* cancelled.
-
-	Returns a new Promise that:
-	- resolves with the same values that this Promise resolves with.
-	- rejects with the same values that this Promise rejects with.
-	- is cancelled if this Promise is cancelled.
-
-	If the value you return from the handler is a Promise:
-	- We wait for the Promise to resolve, but we ultimately discard the resolved value.
-	- If the returned Promise rejects, the Promise returned from `finally` will reject with the rejected value from the
-	*returned* promise.
-	- If the `finally` Promise is cancelled, and you returned a Promise from the handler, we cancel that Promise too.
-
-	Otherwise, the return value from the `finally` handler is entirely discarded.
-
-	:::note Cancellation
-	As of Promise v4, `Promise:finally` does not count as a consumer of the parent Promise for cancellation purposes.
-	This means that if all of a Promise's consumers are cancelled and the only remaining callbacks are finally handlers,
-	the Promise is cancelled and the finally callbacks run then and there.
-
-	Cancellation still propagates through the `finally` Promise though: if you cancel the `finally` Promise, it can cancel
-	its parent Promise if it had no other consumers. Likewise, if the parent Promise is cancelled, the `finally` Promise
-	will also be cancelled.
-	:::
-
-	```lua
-	local thing = createSomething()
-
-	doSomethingWith(thing)
-		:andThen(function()
-			print("It worked!")
-			-- do something..
-		end)
-		:catch(function()
-			warn("Oh no it failed!")
-		end)
-		:finally(function()
-			-- either way, destroy thing
-
-			thing:Destroy()
-		end)
-
-	```
-
-	@param finallyHandler (status: Status) -> ...any
-	@return Promise<...any>
-]=]
-function Promise.prototype:finally(finallyHandler)
-	assert(finallyHandler == nil or isCallable(finallyHandler), string.format(ERROR_NON_FUNCTION, "Promise:finally"))
-	return self:_finally(debug.traceback(nil, 2), finallyHandler)
-end
-
---[=[
-	Same as `andThenCall`, except for `finally`.
-
-	Attaches a `finally` handler to this Promise that calls the given callback with the predefined arguments.
-
-	@param callback (...: any) -> any
-	@param ...? any -- Additional arguments which will be passed to `callback`
-	@return Promise
-]=]
-function Promise.prototype:finallyCall(callback, ...)
-	assert(isCallable(callback), string.format(ERROR_NON_FUNCTION, "Promise:finallyCall"))
-	local length, values = pack(...)
-	return self:_finally(debug.traceback(nil, 2), function()
-		return callback(unpack(values, 1, length))
-	end)
-end
-
---[=[
-	Attaches a `finally` handler to this Promise that discards the resolved value and returns the given value from it.
-
-	```lua
-		promise:finallyReturn("some", "values")
-	```
-
-	This is sugar for
-
-	```lua
-		promise:finally(function()
-			return "some", "values"
-		end)
-	```
-
-	@param ... any -- Values to return from the function
-	@return Promise
-]=]
-function Promise.prototype:finallyReturn(...)
-	local length, values = pack(...)
-	return self:_finally(debug.traceback(nil, 2), function()
-		return unpack(values, 1, length)
-	end)
-end
-
---[=[
-	Yields the current thread until the given Promise completes. Returns the Promise's status, followed by the values that the promise resolved or rejected with.
-
-	@yields
-	@return Status -- The Status representing the fate of the Promise
-	@return ...any -- The values the Promise resolved or rejected with.
-]=]
-function Promise.prototype:awaitStatus()
-	self._unhandledRejection = false
-
-	if self._status == Promise.Status.Started then
-		local thread = coroutine.running()
-
-		self
-			:finally(function()
-				task.spawn(thread)
-			end)
-			-- The finally promise can propagate rejections, so we attach a catch handler to prevent the unhandled
-			-- rejection warning from appearing
-			:catch(
-				function() end
-			)
-
-		coroutine.yield()
-	end
-
-	if self._status == Promise.Status.Resolved then
-		return self._status, unpack(self._values, 1, self._valuesLength)
-	elseif self._status == Promise.Status.Rejected then
-		return self._status, unpack(self._values, 1, self._valuesLength)
-	end
-
-	return self._status
-end
-
-local function awaitHelper(status, ...)
-	return status == Promise.Status.Resolved, ...
-end
-
---[=[
-	Yields the current thread until the given Promise completes. Returns true if the Promise resolved, followed by the values that the promise resolved or rejected with.
-
-	:::caution
-	If the Promise gets cancelled, this function will return `false`, which is indistinguishable from a rejection. If you need to differentiate, you should use [[Promise.awaitStatus]] instead.
-	:::
-
-	```lua
-		local worked, value = getTheValue():await()
-
-	if worked then
-		print("got", value)
-	else
-		warn("it failed")
-	end
-	```
-
-	@yields
-	@return boolean -- `true` if the Promise successfully resolved
-	@return ...any -- The values the Promise resolved or rejected with.
-]=]
-function Promise.prototype:await()
-	return awaitHelper(self:awaitStatus())
-end
-
-local function expectHelper(status, ...)
-	if status ~= Promise.Status.Resolved then
-		error((...) == nil and "Expected Promise rejected with no value." or (...), 3)
-	end
-
-	return ...
-end
-
---[=[
-	Yields the current thread until the given Promise completes. Returns the values that the promise resolved with.
-
-	```lua
-	local worked = pcall(function()
-		print("got", getTheValue():expect())
-	end)
-
-	if not worked then
-		warn("it failed")
-	end
-	```
-
-	This is essentially sugar for:
-
-	```lua
-	select(2, assert(promise:await()))
-	```
-
-	**Errors** if the Promise rejects or gets cancelled.
-
-	@error any -- Errors with the rejection value if this Promise rejects or gets cancelled.
-	@yields
-	@return ...any -- The values the Promise resolved with.
-]=]
-function Promise.prototype:expect()
-	return expectHelper(self:awaitStatus())
-end
-
--- Backwards compatibility
-Promise.prototype.awaitValue = Promise.prototype.expect
-
---[[
-	Intended for use in tests.
-
-	Similar to await(), but instead of yielding if the promise is unresolved,
-	_unwrap will throw. This indicates an assumption that a promise has
-	resolved.
-]]
-function Promise.prototype:_unwrap()
-	if self._status == Promise.Status.Started then
-		error("Promise has not resolved or rejected.", 2)
-	end
-
-	local success = self._status == Promise.Status.Resolved
-
-	return success, unpack(self._values, 1, self._valuesLength)
-end
-
-function Promise.prototype:_resolve(...)
-	if self._status ~= Promise.Status.Started then
-		if Promise.is((...)) then
-			(...):_consumerCancelled(self)
-		end
-		return
-	end
-
-	-- If the resolved value was a Promise, we chain onto it!
-	if Promise.is((...)) then
-		-- Without this warning, arguments sometimes mysteriously disappear
-		if select("#", ...) > 1 then
-			local message = string.format(
-				"When returning a Promise from andThen, extra arguments are " .. "discarded! See:\n\n%s",
-				self._source
-			)
-			warn(message)
-		end
-
-		local chainedPromise = ...
-
-		local promise = chainedPromise:andThen(function(...)
-			self:_resolve(...)
-		end, function(...)
-			local maybeRuntimeError = chainedPromise._values[1]
-
-			-- Backwards compatibility < v2
-			if chainedPromise._error then
-				maybeRuntimeError = Error.new({
-					error = chainedPromise._error,
-					kind = Error.Kind.ExecutionError,
-					context = "[No stack trace available as this Promise originated from an older version of the Promise library (< v2)]",
-				})
-			end
-
-			if Error.isKind(maybeRuntimeError, Error.Kind.ExecutionError) then
-				return self:_reject(maybeRuntimeError:extend({
-					error = "This Promise was chained to a Promise that errored.",
-					trace = "",
-					context = string.format(
-						"The Promise at:\n\n%s\n...Rejected because it was chained to the following Promise, which encountered an error:\n",
-						self._source
-					),
-				}))
-			end
-
-			self:_reject(...)
-		end)
-
-		if promise._status == Promise.Status.Cancelled then
-			self:cancel()
-		elseif promise._status == Promise.Status.Started then
-			-- Adopt ourselves into promise for cancellation propagation.
-			self._parent = promise
-			promise._consumers[self] = true
-		end
-
-		return
-	end
-
-	self._status = Promise.Status.Resolved
-	self._valuesLength, self._values = pack(...)
-
-	-- We assume that these callbacks will not throw errors.
-	for _, callback in ipairs(self._queuedResolve) do
-		coroutine.wrap(callback)(...)
-	end
-
-	self:_finalize()
-end
-
-function Promise.prototype:_reject(...)
-	if self._status ~= Promise.Status.Started then
-		return
-	end
-
-	self._status = Promise.Status.Rejected
-	self._valuesLength, self._values = pack(...)
-
-	-- If there are any rejection handlers, call those!
-	if not isEmpty(self._queuedReject) then
-		-- We assume that these callbacks will not throw errors.
-		for _, callback in ipairs(self._queuedReject) do
-			coroutine.wrap(callback)(...)
-		end
-	else
-		-- At this point, no one was able to observe the error.
-		-- An error handler might still be attached if the error occurred
-		-- synchronously. We'll wait one tick, and if there are still no
-		-- observers, then we should put a message in the console.
-
-		local err = tostring((...))
-
-		coroutine.wrap(function()
-			Promise._timeEvent:Wait()
-
-			-- Someone observed the error, hooray!
-			if not self._unhandledRejection then
-				return
-			end
-
-			-- Build a reasonable message
-			local message = string.format("Unhandled Promise rejection:\n\n%s\n\n%s", err, self._source)
-
-			for _, callback in ipairs(Promise._unhandledRejectionCallbacks) do
-				task.spawn(callback, self, unpack(self._values, 1, self._valuesLength))
-			end
-
-			warn(message)
-		end)()
-	end
-
-	self:_finalize()
-end
-
---[[
-	Calls any :finally handlers. We need this to be a separate method and
-	queue because we must call all of the finally callbacks upon a success,
-	failure, *and* cancellation.
-]]
-function Promise.prototype:_finalize()
-	for _, callback in ipairs(self._queuedFinally) do
-		-- Purposefully not passing values to callbacks here, as it could be the
-		-- resolved values, or rejected errors. If the developer needs the values,
-		-- they should use :andThen or :catch explicitly.
-		coroutine.wrap(callback)(self._status)
-	end
-
-	self._queuedFinally = nil
-	self._queuedReject = nil
-	self._queuedResolve = nil
-
-	task.defer(coroutine.close, self._thread)
-end
-
---[=[
-	Chains a Promise from this one that is resolved if this Promise is already resolved, and rejected if it is not resolved at the time of calling `:now()`. This can be used to ensure your `andThen` handler occurs on the same frame as the root Promise execution.
-
-	```lua
-	doSomething()
-		:now()
-		:andThen(function(value)
-			print("Got", value, "synchronously.")
-		end)
-	```
-
-	If this Promise is still running, Rejected, or Cancelled, the Promise returned from `:now()` will reject with the `rejectionValue` if passed, otherwise with a `Promise.Error(Promise.Error.Kind.NotResolvedInTime)`. This can be checked with [[Error.isKind]].
-
-	@param rejectionValue? any -- The value to reject with if the Promise isn't resolved
-	@return Promise
-]=]
-function Promise.prototype:now(rejectionValue)
-	local traceback = debug.traceback(nil, 2)
-	if self._status == Promise.Status.Resolved then
-		return self:_andThen(traceback, function(...)
-			return ...
-		end)
-	else
-		return Promise.reject(rejectionValue == nil and Error.new({
-			kind = Error.Kind.NotResolvedInTime,
-			error = "This Promise was not resolved in time for :now()",
-			context = ":now() was called at:\n\n" .. traceback,
-		}) or rejectionValue)
-	end
-end
-
---[=[
-	Repeatedly calls a Promise-returning function up to `times` number of times, until the returned Promise resolves.
-
-	If the amount of retries is exceeded, the function will return the latest rejected Promise.
-
-	```lua
-	local function canFail(a, b, c)
-		return Promise.new(function(resolve, reject)
-			-- do something that can fail
-
-			local failed, thing = doSomethingThatCanFail(a, b, c)
-
-			if failed then
-				reject("it failed")
-			else
-				resolve(thing)
-			end
-		end)
-	end
-
-	local MAX_RETRIES = 10
-	local value = Promise.retry(canFail, MAX_RETRIES, "foo", "bar", "baz") -- args to send to canFail
-	```
-
-	@since 3.0.0
-	@param callback (...: P) -> Promise<T>
-	@param times number
-	@param ...? P
-	@return Promise<T>
-]=]
-function Promise.retry(callback, times, ...)
-	assert(isCallable(callback), "Parameter #1 to Promise.retry must be a function")
-	assert(type(times) == "number", "Parameter #2 to Promise.retry must be a number")
-
-	local args, length = { ... }, select("#", ...)
-
-	return Promise.resolve(callback(...)):catch(function(...)
-		if times > 0 then
-			return Promise.retry(callback, times - 1, unpack(args, 1, length))
-		else
-			return Promise.reject(...)
-		end
-	end)
-end
-
---[=[
-	Repeatedly calls a Promise-returning function up to `times` number of times, waiting `seconds` seconds between each
-	retry, until the returned Promise resolves.
-
-	If the amount of retries is exceeded, the function will return the latest rejected Promise.
-
-	@since v3.2.0
-	@param callback (...: P) -> Promise<T>
-	@param times number
-	@param seconds number
-	@param ...? P
-	@return Promise<T>
-]=]
-function Promise.retryWithDelay(callback, times, seconds, ...)
-	assert(isCallable(callback), "Parameter #1 to Promise.retry must be a function")
-	assert(type(times) == "number", "Parameter #2 (times) to Promise.retry must be a number")
-	assert(type(seconds) == "number", "Parameter #3 (seconds) to Promise.retry must be a number")
-
-	local args, length = { ... }, select("#", ...)
-
-	return Promise.resolve(callback(...)):catch(function(...)
-		if times > 0 then
-			Promise.delay(seconds):await()
-
-			return Promise.retryWithDelay(callback, times - 1, seconds, unpack(args, 1, length))
-		else
-			return Promise.reject(...)
-		end
-	end)
-end
-
---[=[
-	Converts an event into a Promise which resolves the next time the event fires.
-
-	The optional `predicate` callback, if passed, will receive the event arguments and should return `true` or `false`, based on if this fired event should resolve the Promise or not. If `true`, the Promise resolves. If `false`, nothing happens and the predicate will be rerun the next time the event fires.
-
-	The Promise will resolve with the event arguments.
-
-	:::tip
-	This function will work given any object with a `Connect` method. This includes all Roblox events.
-	:::
-
-	```lua
-	-- Creates a Promise which only resolves when `somePart` is touched
-	-- by a part named `"Something specific"`.
-	return Promise.fromEvent(somePart.Touched, function(part)
-		return part.Name == "Something specific"
-	end)
-	```
-
-	@since 3.0.0
-	@param event Event -- Any object with a `Connect` method. This includes all Roblox events.
-	@param predicate? (...: P) -> boolean -- A function which determines if the Promise should resolve with the given value, or wait for the next event to check again.
-	@return Promise<P>
-]=]
-function Promise.fromEvent(event, predicate)
-	predicate = predicate or function()
-		return true
-	end
-
-	return Promise._new(debug.traceback(nil, 2), function(resolve, _, onCancel)
-		local connection
-		local shouldDisconnect = false
-
-		local function disconnect()
-			connection:Disconnect()
-			connection = nil
-		end
-
-		-- We use shouldDisconnect because if the callback given to Connect is called before
-		-- Connect returns, connection will still be nil. This happens with events that queue up
-		-- events when there's nothing connected, such as RemoteEvents
-
-		connection = event:Connect(function(...)
-			local callbackValue = predicate(...)
-
-			if callbackValue == true then
-				resolve(...)
-
-				if connection then
-					disconnect()
-				else
-					shouldDisconnect = true
-				end
-			elseif type(callbackValue) ~= "boolean" then
-				error("Promise.fromEvent predicate should always return a boolean")
-			end
-		end)
-
-		if shouldDisconnect and connection then
-			return disconnect()
-		end
-
-		onCancel(disconnect)
-	end)
-end
-
---[=[
-	Registers a callback that runs when an unhandled rejection happens. An unhandled rejection happens when a Promise
-	is rejected, and the rejection is not observed with `:catch`.
-
-	The callback is called with the actual promise that rejected, followed by the rejection values.
-
-	@since v3.2.0
-	@param callback (promise: Promise, ...: any) -- A callback that runs when an unhandled rejection happens.
-	@return () -> () -- Function that unregisters the `callback` when called
-]=]
-function Promise.onUnhandledRejection(callback)
-	table.insert(Promise._unhandledRejectionCallbacks, callback)
-
-	return function()
-		local index = table.find(Promise._unhandledRejectionCallbacks, callback)
-
-		if index then
-			table.remove(Promise._unhandledRejectionCallbacks, index)
-		end
-	end
-end
-
-return Promise
-
-end)() end,
-    [82] = function()local wax,script,require=ImportGlobals(82)local ImportGlobals return (function(...)local SnapdragonController = require(script.SnapdragonController)
+    [81] = function()local wax,script,require=ImportGlobals(81)local ImportGlobals return (function(...)local SnapdragonController = require(script.SnapdragonController)
 local SnapdragonRef = require(script.SnapdragonRef)
 
 local function createDragController(...)
@@ -12486,7 +10158,7 @@ export.default = export
 return export
 
 end)() end,
-    [83] = function()local wax,script,require=ImportGlobals(83)local ImportGlobals return (function(...)-- Manages the cleaning of events and other things.
+    [82] = function()local wax,script,require=ImportGlobals(82)local ImportGlobals return (function(...)-- Manages the cleaning of events and other things.
 -- Useful for encapsulating state and make deconstructors easy
 -- @classmod Maid
 -- @see Signal
@@ -12610,7 +10282,7 @@ Maid.Destroy = Maid.DoCleaning
 return Maid
 
 end)() end,
-    [84] = function()local wax,script,require=ImportGlobals(84)local ImportGlobals return (function(...)local Signal = {}
+    [83] = function()local wax,script,require=ImportGlobals(83)local ImportGlobals return (function(...)local Signal = {}
 Signal.__index = Signal
 
 function Signal.new()
@@ -12645,7 +10317,7 @@ end
 return Signal
 
 end)() end,
-    [85] = function()local wax,script,require=ImportGlobals(85)local ImportGlobals return (function(...)local UserInputService = game:GetService("UserInputService")
+    [84] = function()local wax,script,require=ImportGlobals(84)local ImportGlobals return (function(...)local UserInputService = game:GetService("UserInputService")
 
 local Maid = require(script.Parent.Maid)
 local Signal = require(script.Parent.Signal)
@@ -13040,7 +10712,7 @@ end
 return SnapdragonController
 
 end)() end,
-    [86] = function()local wax,script,require=ImportGlobals(86)local ImportGlobals return (function(...)local refs = setmetatable({}, { __mode = "k" })
+    [85] = function()local wax,script,require=ImportGlobals(85)local ImportGlobals return (function(...)local refs = setmetatable({}, { __mode = "k" })
 
 local SnapdragonRef = {}
 SnapdragonRef.__index = SnapdragonRef
@@ -13068,7 +10740,7 @@ end
 return SnapdragonRef
 
 end)() end,
-    [87] = function()local wax,script,require=ImportGlobals(87)local ImportGlobals return (function(...)--[[
+    [86] = function()local wax,script,require=ImportGlobals(86)local ImportGlobals return (function(...)--[[
 	A 'Symbol' is an opaque marker type.
 
 	Symbols have the type 'userdata', but when printed to the console, the name
@@ -13100,7 +10772,7 @@ end
 return Symbol
 
 end)() end,
-    [88] = function()local wax,script,require=ImportGlobals(88)local ImportGlobals return (function(...)local function objectAssign(target, ...)
+    [87] = function()local wax,script,require=ImportGlobals(87)local ImportGlobals return (function(...)local function objectAssign(target, ...)
 	local targets = { ... }
 	for _, t in pairs(targets) do
 		for k, v in pairs(t) do
@@ -13113,7 +10785,7 @@ end
 return objectAssign
 
 end)() end,
-    [89] = function()local wax,script,require=ImportGlobals(89)local ImportGlobals return (function(...)-- t: a runtime typechecker for Roblox
+    [88] = function()local wax,script,require=ImportGlobals(88)local ImportGlobals return (function(...)-- t: a runtime typechecker for Roblox
 
 -- regular lua compatibility
 local typeof = typeof or type
@@ -14294,7 +11966,7 @@ end
 return t
 
 end)() end,
-    [90] = function()local wax,script,require=ImportGlobals(90)local ImportGlobals return (function(...)local Fusion = require(script.Parent.fusion)
+    [89] = function()local wax,script,require=ImportGlobals(89)local ImportGlobals return (function(...)local Fusion = require(script.Parent.fusion)
 local Value = Fusion.Value
 
 local GlobalStates = {
@@ -14305,6 +11977,7 @@ local GlobalStates = {
 	Tabs = Value({}),
 	UILayouts = Value({}),
 	Containers = Value({}),
+	Notifications = Value({}),
 
 	CurrentTab = Value(),
 	Elements = Value(),
@@ -14338,7 +12011,7 @@ end
 return GlobalStates
 
 end)() end,
-    [91] = function()local wax,script,require=ImportGlobals(91)local ImportGlobals return (function(...)--[[
+    [90] = function()local wax,script,require=ImportGlobals(90)local ImportGlobals return (function(...)--[[
 MIT License
 
 Copyright (c) 2021 EgoMoose
@@ -14528,7 +12201,7 @@ end
 return ViewportModelClass
 
 end)() end,
-    [93] = function()local wax,script,require=ImportGlobals(93)local ImportGlobals return (function(...)local Fusion = require(script.Parent.Parent.packages.fusion)
+    [92] = function()local wax,script,require=ImportGlobals(92)local ImportGlobals return (function(...)local Fusion = require(script.Parent.Parent.packages.fusion)
 local Computed = Fusion.Computed
 local States = require(script.Parent.Parent.packages.states)
 local animate = require(script.Parent.Parent.utils.animate)
@@ -14736,7 +12409,7 @@ end
 return currentColours
 
 end)() end,
-    [94] = function()local wax,script,require=ImportGlobals(94)local ImportGlobals return (function(...)--[[
+    [93] = function()local wax,script,require=ImportGlobals(93)local ImportGlobals return (function(...)--[[
 	File: app.story.lua
 ]]
 
@@ -14901,7 +12574,7 @@ AimbotSection:AddTable("Table", {
 
 return story
 end)() end,
-    [96] = function()local wax,script,require=ImportGlobals(96)local ImportGlobals return (function(...)local Fusion = require(script.Parent.Parent.packages.fusion)
+    [95] = function()local wax,script,require=ImportGlobals(95)local ImportGlobals return (function(...)local Fusion = require(script.Parent.Parent.packages.fusion)
 local Spring = Fusion.Spring
 local Computed = Fusion.Computed
 
@@ -14910,7 +12583,7 @@ return function(callback, speed, damping)
 end
 
 end)() end,
-    [97] = function()local wax,script,require=ImportGlobals(97)local ImportGlobals return (function(...)local ColorUtils = {}
+    [96] = function()local wax,script,require=ImportGlobals(96)local ImportGlobals return (function(...)local ColorUtils = {}
 
 function ColorUtils.darkenRGB(Color, factor: number)
 	return Color3.fromRGB((Color.R * 255) - factor, (Color.G * 255) - factor, (Color.B * 255) - factor)
@@ -14923,7 +12596,7 @@ end
 return ColorUtils
 
 end)() end,
-    [98] = function()local wax,script,require=ImportGlobals(98)local ImportGlobals return (function(...)local unwrap = require(script.Parent.unwrap)
+    [97] = function()local wax,script,require=ImportGlobals(97)local ImportGlobals return (function(...)local unwrap = require(script.Parent.unwrap)
 
 return function(container, element)
     local currentItems = unwrap(container)
@@ -14931,7 +12604,7 @@ return function(container, element)
     container:set(currentItems)
 end
 end)() end,
-    [99] = function()local wax,script,require=ImportGlobals(99)local ImportGlobals return (function(...)local Player = {}
+    [98] = function()local wax,script,require=ImportGlobals(98)local ImportGlobals return (function(...)local Player = {}
 
 local Players = game:GetService("Players")
 
@@ -15006,24 +12679,7 @@ end
 return Player
 
 end)() end,
-    [100] = function()local wax,script,require=ImportGlobals(100)local ImportGlobals return (function(...)local Promise = require(script.Parent.Parent.packages.promise)
-
-return function(url)
-	return Promise.new(function(resolve, reject)
-		local success, result = pcall(function()
-			return game:HttpGetAsync(url)
-		end)
-
-		if success then
-			resolve(result)
-		else
-			reject(result)
-		end
-	end)
-end
-
-end)() end,
-    [101] = function()local wax,script,require=ImportGlobals(101)local ImportGlobals return (function(...)return function(callback: () -> ...any): thread
+    [99] = function()local wax,script,require=ImportGlobals(99)local ImportGlobals return (function(...)return function(callback: () -> ...any): thread
 	local ok, result = pcall(callback)
 
 	if not ok then
@@ -15034,7 +12690,7 @@ end)() end,
 end
 
 end)() end,
-    [102] = function()local wax,script,require=ImportGlobals(102)local ImportGlobals return (function(...)return setmetatable({}, {
+    [100] = function()local wax,script,require=ImportGlobals(100)local ImportGlobals return (function(...)return setmetatable({}, {
 	__index = function(self, serviceName)
 		local service = game:GetService(serviceName)
 		self[serviceName] = service
@@ -15044,7 +12700,7 @@ end)() end,
 })
 
 end)() end,
-    [103] = function()local wax,script,require=ImportGlobals(103)local ImportGlobals return (function(...)return function(x: any, useDependency: boolean?): any
+    [101] = function()local wax,script,require=ImportGlobals(101)local ImportGlobals return (function(...)return function(x: any, useDependency: boolean?): any
 	if typeof(x) == "table" and x.type == "State" then
 		return x:get(useDependency)
 	end
@@ -15065,218 +12721,42 @@ local ObjectTree = {
         },
         {
             {
-                92,
-                1,
-                {
-                    "storage"
-                },
-                {
-                    {
-                        93,
-                        2,
-                        {
-                            "theme"
-                        }
-                    }
-                }
-            },
-            {
-                22,
-                2,
-                {
-                    "mock.story"
-                }
-            },
-            {
-                2,
-                2,
-                {
-                    "Elements"
-                },
-                {
-                    {
-                        4,
-                        2,
-                        {
-                            "colorpicker"
-                        }
-                    },
-                    {
-                        9,
-                        2,
-                        {
-                            "seperator"
-                        }
-                    },
-                    {
-                        3,
-                        2,
-                        {
-                            "button"
-                        }
-                    },
-                    {
-                        8,
-                        2,
-                        {
-                            "radio"
-                        }
-                    },
-                    {
-                        7,
-                        2,
-                        {
-                            "keybind"
-                        }
-                    },
-                    {
-                        12,
-                        2,
-                        {
-                            "text"
-                        }
-                    },
-                    {
-                        11,
-                        2,
-                        {
-                            "table"
-                        }
-                    },
-                    {
-                        5,
-                        2,
-                        {
-                            "dropdown"
-                        }
-                    },
-                    {
-                        13,
-                        2,
-                        {
-                            "toggle"
-                        }
-                    },
-                    {
-                        6,
-                        2,
-                        {
-                            "input"
-                        }
-                    },
-                    {
-                        10,
-                        2,
-                        {
-                            "slider"
-                        }
-                    }
-                }
-            },
-            {
-                14,
-                1,
-                {
-                    "components"
-                },
-                {
-                    {
-                        15,
-                        1,
-                        {
-                            "notification"
-                        }
-                    },
-                    {
-                        16,
-                        1,
-                        {
-                            "window"
-                        },
-                        {
-                            {
-                                20,
-                                2,
-                                {
-                                    "tab"
-                                }
-                            },
-                            {
-                                21,
-                                2,
-                                {
-                                    "window"
-                                }
-                            },
-                            {
-                                18,
-                                2,
-                                {
-                                    "dialog"
-                                }
-                            },
-                            {
-                                19,
-                                2,
-                                {
-                                    "section"
-                                }
-                            },
-                            {
-                                17,
-                                2,
-                                {
-                                    "category"
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            {
                 94,
-                2,
-                {
-                    "test.story"
-                }
-            },
-            {
-                95,
                 1,
                 {
                     "utils"
                 },
                 {
                     {
-                        101,
+                        99,
                         2,
                         {
                             "safecallback"
                         }
                     },
                     {
-                        103,
+                        97,
                         2,
                         {
-                            "unwrap"
+                            "insertitem"
                         }
                     },
                     {
-                        99,
+                        96,
                         2,
                         {
-                            "player"
+                            "color3"
                         }
                     },
                     {
-                        102,
+                        100,
                         2,
                         {
                             "services"
                         }
                     },
                     {
-                        96,
+                        95,
                         2,
                         {
                             "animate"
@@ -15286,62 +12766,64 @@ local ObjectTree = {
                         98,
                         2,
                         {
-                            "insertitem"
+                            "player"
                         }
                     },
                     {
-                        100,
+                        101,
                         2,
                         {
-                            "request"
-                        }
-                    },
-                    {
-                        97,
-                        2,
-                        {
-                            "color3"
+                            "unwrap"
                         }
                     }
                 }
             },
             {
-                23,
+                93,
+                2,
+                {
+                    "test.story"
+                }
+            },
+            {
+                91,
+                1,
+                {
+                    "storage"
+                },
+                {
+                    {
+                        92,
+                        2,
+                        {
+                            "theme"
+                        }
+                    }
+                }
+            },
+            {
+                25,
                 1,
                 {
                     "packages"
                 },
                 {
                     {
-                        91,
+                        89,
+                        2,
+                        {
+                            "states"
+                        }
+                    },
+                    {
+                        90,
                         2,
                         {
                             "viewport"
                         }
                     },
                     {
-                        24,
-                        2,
-                        {
-                            "damerau"
-                        }
-                    },
-                    {
-                        80,
-                        2,
-                        {
-                            "maid"
-                        }
-                    },
-                    {
-                        25,
-                        2,
-                        {
-                            "freecam"
-                        }
-                    },
-                    {
-                        82,
+                        81,
                         2,
                         {
                             "snapdragon"
@@ -15351,32 +12833,18 @@ local ObjectTree = {
                                 86,
                                 2,
                                 {
-                                    "SnapdragonRef"
-                                }
-                            },
-                            {
-                                84,
-                                2,
-                                {
-                                    "Signal"
-                                }
-                            },
-                            {
-                                88,
-                                2,
-                                {
-                                    "objectAssign"
-                                }
-                            },
-                            {
-                                87,
-                                2,
-                                {
                                     "Symbol"
                                 }
                             },
                             {
-                                89,
+                                82,
+                                2,
+                                {
+                                    "Maid"
+                                }
+                            },
+                            {
+                                88,
                                 2,
                                 {
                                     "t"
@@ -15386,6 +12854,20 @@ local ObjectTree = {
                                 85,
                                 2,
                                 {
+                                    "SnapdragonRef"
+                                }
+                            },
+                            {
+                                87,
+                                2,
+                                {
+                                    "objectAssign"
+                                }
+                            },
+                            {
+                                84,
+                                2,
+                                {
                                     "SnapdragonController"
                                 }
                             },
@@ -15393,16 +12875,9 @@ local ObjectTree = {
                                 83,
                                 2,
                                 {
-                                    "Maid"
+                                    "Signal"
                                 }
                             }
-                        }
-                    },
-                    {
-                        90,
-                        2,
-                        {
-                            "states"
                         }
                     },
                     {
@@ -15420,33 +12895,135 @@ local ObjectTree = {
                                 }
                             },
                             {
+                                56,
+                                1,
+                                {
+                                    "Logging"
+                                },
+                                {
+                                    {
+                                        60,
+                                        2,
+                                        {
+                                            "messages"
+                                        }
+                                    },
+                                    {
+                                        58,
+                                        2,
+                                        {
+                                            "logErrorNonFatal"
+                                        }
+                                    },
+                                    {
+                                        61,
+                                        2,
+                                        {
+                                            "parseError"
+                                        }
+                                    },
+                                    {
+                                        59,
+                                        2,
+                                        {
+                                            "logWarn"
+                                        }
+                                    },
+                                    {
+                                        57,
+                                        2,
+                                        {
+                                            "logError"
+                                        }
+                                    }
+                                }
+                            },
+                            {
+                                45,
+                                1,
+                                {
+                                    "Instances"
+                                },
+                                {
+                                    {
+                                        52,
+                                        2,
+                                        {
+                                            "Out"
+                                        }
+                                    },
+                                    {
+                                        53,
+                                        2,
+                                        {
+                                            "Ref"
+                                        }
+                                    },
+                                    {
+                                        49,
+                                        2,
+                                        {
+                                            "New"
+                                        }
+                                    },
+                                    {
+                                        51,
+                                        2,
+                                        {
+                                            "OnEvent"
+                                        }
+                                    },
+                                    {
+                                        48,
+                                        2,
+                                        {
+                                            "Hydrate"
+                                        }
+                                    },
+                                    {
+                                        50,
+                                        2,
+                                        {
+                                            "OnChange"
+                                        }
+                                    },
+                                    {
+                                        54,
+                                        2,
+                                        {
+                                            "applyInstanceProps"
+                                        }
+                                    },
+                                    {
+                                        55,
+                                        2,
+                                        {
+                                            "defaultProps"
+                                        }
+                                    },
+                                    {
+                                        47,
+                                        2,
+                                        {
+                                            "Cleanup"
+                                        }
+                                    },
+                                    {
+                                        46,
+                                        2,
+                                        {
+                                            "Children"
+                                        }
+                                    }
+                                }
+                            },
+                            {
                                 39,
                                 1,
                                 {
                                     "Dependencies"
                                 },
                                 {
-                                    {
-                                        44,
-                                        2,
-                                        {
-                                            "useDependency"
-                                        }
-                                    },
-                                    {
-                                        42,
-                                        2,
-                                        {
-                                            "sharedState"
-                                        }
-                                    },
-                                    {
-                                        40,
-                                        2,
-                                        {
-                                            "captureDependencies"
-                                        }
-                                    },
                                     {
                                         41,
                                         2,
@@ -15460,14 +13037,28 @@ local ObjectTree = {
                                         {
                                             "updateAll"
                                         }
+                                    },
+                                    {
+                                        40,
+                                        2,
+                                        {
+                                            "captureDependencies"
+                                        }
+                                    },
+                                    {
+                                        42,
+                                        2,
+                                        {
+                                            "sharedState"
+                                        }
+                                    },
+                                    {
+                                        44,
+                                        2,
+                                        {
+                                            "useDependency"
+                                        }
                                     }
-                                }
-                            },
-                            {
-                                71,
-                                2,
-                                {
-                                    "Types"
                                 }
                             },
                             {
@@ -15487,119 +13078,10 @@ local ObjectTree = {
                                 }
                             },
                             {
-                                56,
-                                1,
+                                71,
+                                2,
                                 {
-                                    "Logging"
-                                },
-                                {
-                                    {
-                                        60,
-                                        2,
-                                        {
-                                            "messages"
-                                        }
-                                    },
-                                    {
-                                        57,
-                                        2,
-                                        {
-                                            "logError"
-                                        }
-                                    },
-                                    {
-                                        61,
-                                        2,
-                                        {
-                                            "parseError"
-                                        }
-                                    },
-                                    {
-                                        59,
-                                        2,
-                                        {
-                                            "logWarn"
-                                        }
-                                    },
-                                    {
-                                        58,
-                                        2,
-                                        {
-                                            "logErrorNonFatal"
-                                        }
-                                    }
-                                }
-                            },
-                            {
-                                27,
-                                1,
-                                {
-                                    "Animation"
-                                },
-                                {
-                                    {
-                                        33,
-                                        2,
-                                        {
-                                            "lerpType"
-                                        }
-                                    },
-                                    {
-                                        36,
-                                        2,
-                                        {
-                                            "unpackType"
-                                        }
-                                    },
-                                    {
-                                        30,
-                                        2,
-                                        {
-                                            "Tween"
-                                        }
-                                    },
-                                    {
-                                        31,
-                                        2,
-                                        {
-                                            "TweenScheduler"
-                                        }
-                                    },
-                                    {
-                                        28,
-                                        2,
-                                        {
-                                            "Spring"
-                                        }
-                                    },
-                                    {
-                                        35,
-                                        2,
-                                        {
-                                            "springCoefficients"
-                                        }
-                                    },
-                                    {
-                                        34,
-                                        2,
-                                        {
-                                            "packType"
-                                        }
-                                    },
-                                    {
-                                        29,
-                                        2,
-                                        {
-                                            "SpringScheduler"
-                                        }
-                                    },
-                                    {
-                                        32,
-                                        2,
-                                        {
-                                            "getTweenRatio"
-                                        }
-                                    }
+                                    "Types"
                                 }
                             },
                             {
@@ -15610,10 +13092,17 @@ local ObjectTree = {
                                 },
                                 {
                                     {
-                                        76,
+                                        79,
                                         2,
                                         {
-                                            "isSimilar"
+                                            "xtypeof"
+                                        }
+                                    },
+                                    {
+                                        77,
+                                        2,
+                                        {
+                                            "needsDestruction"
                                         }
                                     },
                                     {
@@ -15631,10 +13120,10 @@ local ObjectTree = {
                                         }
                                     },
                                     {
-                                        77,
+                                        76,
                                         2,
                                         {
-                                            "needsDestruction"
+                                            "isSimilar"
                                         }
                                     },
                                     {
@@ -15650,12 +13139,77 @@ local ObjectTree = {
                                         {
                                             "None"
                                         }
-                                    },
+                                    }
+                                }
+                            },
+                            {
+                                27,
+                                1,
+                                {
+                                    "Animation"
+                                },
+                                {
                                     {
-                                        79,
+                                        34,
                                         2,
                                         {
-                                            "xtypeof"
+                                            "packType"
+                                        }
+                                    },
+                                    {
+                                        36,
+                                        2,
+                                        {
+                                            "unpackType"
+                                        }
+                                    },
+                                    {
+                                        30,
+                                        2,
+                                        {
+                                            "Tween"
+                                        }
+                                    },
+                                    {
+                                        28,
+                                        2,
+                                        {
+                                            "Spring"
+                                        }
+                                    },
+                                    {
+                                        35,
+                                        2,
+                                        {
+                                            "springCoefficients"
+                                        }
+                                    },
+                                    {
+                                        33,
+                                        2,
+                                        {
+                                            "lerpType"
+                                        }
+                                    },
+                                    {
+                                        29,
+                                        2,
+                                        {
+                                            "SpringScheduler"
+                                        }
+                                    },
+                                    {
+                                        31,
+                                        2,
+                                        {
+                                            "TweenScheduler"
+                                        }
+                                    },
+                                    {
+                                        32,
+                                        2,
+                                        {
+                                            "getTweenRatio"
                                         }
                                     }
                                 }
@@ -15668,38 +13222,10 @@ local ObjectTree = {
                                 },
                                 {
                                     {
-                                        66,
-                                        2,
-                                        {
-                                            "ForPairs"
-                                        }
-                                    },
-                                    {
-                                        65,
-                                        2,
-                                        {
-                                            "ForKeys"
-                                        }
-                                    },
-                                    {
-                                        69,
-                                        2,
-                                        {
-                                            "Value"
-                                        }
-                                    },
-                                    {
                                         70,
                                         2,
                                         {
                                             "unwrap"
-                                        }
-                                    },
-                                    {
-                                        64,
-                                        2,
-                                        {
-                                            "Computed"
                                         }
                                     },
                                     {
@@ -15710,89 +13236,38 @@ local ObjectTree = {
                                         }
                                     },
                                     {
+                                        69,
+                                        2,
+                                        {
+                                            "Value"
+                                        }
+                                    },
+                                    {
                                         67,
                                         2,
                                         {
                                             "ForValues"
                                         }
-                                    }
-                                }
-                            },
-                            {
-                                45,
-                                1,
-                                {
-                                    "Instances"
-                                },
-                                {
+                                    },
                                     {
-                                        54,
+                                        65,
                                         2,
                                         {
-                                            "applyInstanceProps"
+                                            "ForKeys"
                                         }
                                     },
                                     {
-                                        49,
+                                        64,
                                         2,
                                         {
-                                            "New"
+                                            "Computed"
                                         }
                                     },
                                     {
-                                        53,
+                                        66,
                                         2,
                                         {
-                                            "Ref"
-                                        }
-                                    },
-                                    {
-                                        51,
-                                        2,
-                                        {
-                                            "OnEvent"
-                                        }
-                                    },
-                                    {
-                                        52,
-                                        2,
-                                        {
-                                            "Out"
-                                        }
-                                    },
-                                    {
-                                        46,
-                                        2,
-                                        {
-                                            "Children"
-                                        }
-                                    },
-                                    {
-                                        47,
-                                        2,
-                                        {
-                                            "Cleanup"
-                                        }
-                                    },
-                                    {
-                                        48,
-                                        2,
-                                        {
-                                            "Hydrate"
-                                        }
-                                    },
-                                    {
-                                        50,
-                                        2,
-                                        {
-                                            "OnChange"
-                                        }
-                                    },
-                                    {
-                                        55,
-                                        2,
-                                        {
-                                            "defaultProps"
+                                            "ForPairs"
                                         }
                                     }
                                 }
@@ -15800,12 +13275,181 @@ local ObjectTree = {
                         }
                     },
                     {
-                        81,
+                        80,
                         2,
                         {
-                            "promise"
+                            "maid"
                         }
                     }
+                }
+            },
+            {
+                2,
+                2,
+                {
+                    "Elements"
+                },
+                {
+                    {
+                        13,
+                        2,
+                        {
+                            "toggle"
+                        }
+                    },
+                    {
+                        10,
+                        2,
+                        {
+                            "slider"
+                        }
+                    },
+                    {
+                        3,
+                        2,
+                        {
+                            "button"
+                        }
+                    },
+                    {
+                        6,
+                        2,
+                        {
+                            "input"
+                        }
+                    },
+                    {
+                        7,
+                        2,
+                        {
+                            "keybind"
+                        }
+                    },
+                    {
+                        5,
+                        2,
+                        {
+                            "dropdown"
+                        }
+                    },
+                    {
+                        8,
+                        2,
+                        {
+                            "radio"
+                        }
+                    },
+                    {
+                        11,
+                        2,
+                        {
+                            "table"
+                        }
+                    },
+                    {
+                        4,
+                        2,
+                        {
+                            "colorpicker"
+                        }
+                    },
+                    {
+                        12,
+                        2,
+                        {
+                            "text"
+                        }
+                    },
+                    {
+                        9,
+                        2,
+                        {
+                            "seperator"
+                        }
+                    }
+                }
+            },
+            {
+                14,
+                1,
+                {
+                    "components"
+                },
+                {
+                    {
+                        18,
+                        1,
+                        {
+                            "window"
+                        },
+                        {
+                            {
+                                21,
+                                2,
+                                {
+                                    "section"
+                                }
+                            },
+                            {
+                                19,
+                                2,
+                                {
+                                    "category"
+                                }
+                            },
+                            {
+                                23,
+                                2,
+                                {
+                                    "window"
+                                }
+                            },
+                            {
+                                20,
+                                2,
+                                {
+                                    "dialog"
+                                }
+                            },
+                            {
+                                22,
+                                2,
+                                {
+                                    "tab"
+                                }
+                            }
+                        }
+                    },
+                    {
+                        15,
+                        1,
+                        {
+                            "notification"
+                        },
+                        {
+                            {
+                                16,
+                                2,
+                                {
+                                    "notification"
+                                }
+                            },
+                            {
+                                17,
+                                2,
+                                {
+                                    "notificationHolder"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                24,
+                2,
+                {
+                    "mock.story"
                 }
             }
         }
@@ -15815,95 +13459,93 @@ local ObjectTree = {
 -- Line offsets for debugging (only included when minifyTables is false)
 local LineOffsets = {
     8,
-    161,
-    169,
-    395,
-    1039,
-    1658,
-    1957,
-    2305,
-    2480,
-    2555,
-    2938,
-    3314,
-    3462,
-    [17] = 3733,
-    [18] = 3901,
-    [19] = 4297,
-    [20] = 4428,
-    [21] = 4611,
-    [22] = 5149,
-    [24] = 6119,
-    [25] = 6191,
-    [26] = 6694,
-    [28] = 6780,
-    [29] = 6998,
-    [30] = 7088,
-    [31] = 7225,
-    [32] = 7297,
-    [33] = 7341,
-    [34] = 7469,
-    [35] = 7536,
-    [36] = 7620,
-    [38] = 7704,
-    [40] = 7759,
-    [41] = 7811,
-    [42] = 7841,
-    [43] = 7866,
-    [44] = 7927,
-    [46] = 7958,
-    [47] = 8105,
-    [48] = 8127,
-    [49] = 8148,
-    [50] = 8185,
-    [51] = 8224,
-    [52] = 8262,
-    [53] = 8306,
-    [54] = 8337,
-    [55] = 8470,
-    [57] = 8581,
-    [58] = 8618,
-    [59] = 8657,
-    [60] = 8682,
-    [61] = 8729,
-    [62] = 8753,
-    [64] = 8898,
-    [65] = 9013,
-    [66] = 9253,
-    [67] = 9560,
-    [68] = 9801,
-    [69] = 9886,
-    [70] = 9950,
-    [71] = 9967,
-    [73] = 10115,
-    [74] = 10130,
-    [75] = 10184,
-    [76] = 10195,
-    [77] = 10214,
-    [78] = 10228,
-    [79] = 10258,
-    [80] = 10279,
-    [81] = 10408,
-    [82] = 12467,
-    [83] = 12489,
-    [84] = 12613,
-    [85] = 12648,
-    [86] = 13043,
-    [87] = 13071,
-    [88] = 13103,
-    [89] = 13116,
-    [90] = 14297,
-    [91] = 14341,
-    [93] = 14531,
-    [94] = 14739,
-    [96] = 14904,
-    [97] = 14913,
-    [98] = 14926,
-    [99] = 14934,
-    [100] = 15009,
-    [101] = 15026,
-    [102] = 15037,
-    [103] = 15047
+    173,
+    181,
+    407,
+    1051,
+    1670,
+    1969,
+    2317,
+    2492,
+    2567,
+    2950,
+    3326,
+    3474,
+    [16] = 3745,
+    [17] = 3983,
+    [19] = 4026,
+    [20] = 4194,
+    [21] = 4590,
+    [22] = 4721,
+    [23] = 4904,
+    [24] = 5451,
+    [26] = 6425,
+    [28] = 6511,
+    [29] = 6729,
+    [30] = 6819,
+    [31] = 6956,
+    [32] = 7028,
+    [33] = 7072,
+    [34] = 7200,
+    [35] = 7267,
+    [36] = 7351,
+    [38] = 7435,
+    [40] = 7490,
+    [41] = 7542,
+    [42] = 7572,
+    [43] = 7597,
+    [44] = 7658,
+    [46] = 7689,
+    [47] = 7836,
+    [48] = 7858,
+    [49] = 7879,
+    [50] = 7916,
+    [51] = 7955,
+    [52] = 7993,
+    [53] = 8037,
+    [54] = 8068,
+    [55] = 8201,
+    [57] = 8312,
+    [58] = 8349,
+    [59] = 8388,
+    [60] = 8413,
+    [61] = 8460,
+    [62] = 8484,
+    [64] = 8629,
+    [65] = 8744,
+    [66] = 8984,
+    [67] = 9291,
+    [68] = 9532,
+    [69] = 9617,
+    [70] = 9681,
+    [71] = 9698,
+    [73] = 9846,
+    [74] = 9861,
+    [75] = 9915,
+    [76] = 9926,
+    [77] = 9945,
+    [78] = 9959,
+    [79] = 9989,
+    [80] = 10010,
+    [81] = 10139,
+    [82] = 10161,
+    [83] = 10285,
+    [84] = 10320,
+    [85] = 10715,
+    [86] = 10743,
+    [87] = 10775,
+    [88] = 10788,
+    [89] = 11969,
+    [90] = 12014,
+    [92] = 12204,
+    [93] = 12412,
+    [95] = 12577,
+    [96] = 12586,
+    [97] = 12599,
+    [98] = 12607,
+    [99] = 12682,
+    [100] = 12693,
+    [101] = 12703
 }
 
 -- Misc AOT variable imports
