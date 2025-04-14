@@ -4,6 +4,7 @@ local scripts = {
     [2132098792] = "https://api.luarmor.net/files/v3/loaders/44ce714e2ab46ba6769e5852c08209d8.lua", --// HOLLOWED
     [5147866763] = "https://api.luarmor.net/files/v3/loaders/6115fc7d9c941cf9f55a8d823873a76f.lua", --// NINJA
     [6473867634] = "https://api.luarmor.net/files/v3/loaders/7c760d77bb20da00e3e911fd496e2552.lua", --// VEIL
+    [7508907071] = "https://api.luarmor.net/files/v3/loaders/bacf24972a79b268ea547360c4c1418d.lua", --// TYPE://RUNE
 }
 
 local GameId = game.GameId
