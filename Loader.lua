@@ -1,3 +1,17 @@
+--// ghoul re ac lazy fix
+local ContentService = game:GetService("ContentProvider")
+local original_metacall
+
+original_metacall = hookmetamethod(game, "__namecall", function(instance, ...)
+    local called_method = getnamecallmethod()
+    
+    if instance == ContentService and (called_method == "GetAssetFetchStatus" or called_method == "GetAssetFetchStatusChangedSignal") then
+        return task.wait(9e9)
+    end
+    
+    return original_metacall(instance, ...)
+end)
+
 local scripts = {
     [6490954291] = "https://api.luarmor.net/files/v3/loaders/9968755f5ae02a057d9208671aa3576b.lua", --// GHOUL://RE
     [4127666953] = "https://api.luarmor.net/files/v3/loaders/e70c05e220610956e958ce7907e774df.lua", --// DEMON HUNTER
