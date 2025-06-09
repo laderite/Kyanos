@@ -107,6 +107,7 @@ local scripts = {
     [6473867634] = "https://api.luarmor.net/files/v3/loaders/7c760d77bb20da00e3e911fd496e2552.lua", --// VEIL
     [7508907071] = "https://api.luarmor.net/files/v3/loaders/bacf24972a79b268ea547360c4c1418d.lua", --// TYPE://RUNE
     [5504799010] = "https://api.luarmor.net/files/v3/loaders/e68579a3c33c252c6341e4074366a9eb.lua", --// SORCERY
+    [5091734860] = "https://api.luarmor.net/files/v3/loaders/ac70401440c41b42d7e56b727877f505.lua", --// HEIAN
 }
 
 local GameId = game.GameId
